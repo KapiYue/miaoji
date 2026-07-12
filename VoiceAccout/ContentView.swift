@@ -1,5 +1,6 @@
 import SwiftUI
 import UIKit
+import UniformTypeIdentifiers
 
 struct ContentView: View {
     @State private var selection: AppTab = .home
@@ -164,6 +165,7 @@ private struct MetricsRow: View {
 }
 
 private enum BadgeColor { case blue, green, purple, amber, pink, cyan
+    static func from(_ index: Int) -> BadgeColor { [.blue, .green, .purple, .amber, .pink, .cyan][abs(index) % 6] }
     var colors: [Color] {
         switch self {
         case .blue: [Color(red: 56/255, green: 189/255, blue: 248/255), Color(red: 37/255, green: 99/255, blue: 235/255)]
@@ -211,15 +213,35 @@ private struct ExpenseRow: View {
 }
 
 private struct HomeView: View {
+    @EnvironmentObject private var store: AppStore
     @State private var sheet: EntrySheet?
+    private var monthRecords: [ExpenseRecord] { store.records.filter { $0.recordType == .expense && Calendar.current.isDate($0.date, equalTo: .now, toGranularity: .month) } }
+    private var previousMonthRecords: [ExpenseRecord] {
+        let date = Calendar.current.date(byAdding: .month, value: -1, to: .now)!
+        return store.records.filter { $0.recordType == .expense && Calendar.current.isDate($0.date, equalTo: date, toGranularity: .month) }
+    }
+    private var todayRecords: [ExpenseRecord] { store.records.filter { $0.recordType == .expense && Calendar.current.isDateInToday($0.date) } }
+    private var recentRecords: [ExpenseRecord] { Array(store.records.sorted(by: { $0.date > $1.date }).prefix(5)) }
+    private var monthTotal: Double { monthRecords.reduce(0) { $0 + $1.amount } }
+    private var previousMonthTotal: Double { previousMonthRecords.reduce(0) { $0 + $1.amount } }
+    private var comparisonText: String {
+        guard previousMonthTotal > 0 else { return "较上月暂无可比数据" }
+        let change = (monthTotal - previousMonthTotal) / previousMonthTotal * 100
+        return "较上月 \(change >= 0 ? "+" : "")\(change.formatted(.number.precision(.fractionLength(1))))%"
+    }
+    private var topTodayCategory: String {
+        let grouped = Dictionary(grouping: todayRecords, by: \.categoryID).mapValues { $0.reduce(0) { $0 + $1.amount } }
+        guard let id = grouped.max(by: { $0.value < $1.value })?.key else { return "暂无" }
+        return store.category(for: id)?.name ?? "未分类"
+    }
     var body: some View {
         Screen {
             Hero(eyebrow: "Daily capture", title: "记账", subtitle: "语音优先，手动补录，减少记录成本。", pill: "Today") {
                 GlassCard {
                     VStack(alignment: .leading, spacing: 10) {
                         Text("本月支出").font(.system(size: 13)).foregroundStyle(Palette.muted)
-                        Text("¥ 3,280.40").font(.system(size: 40, weight: .heavy)).tracking(-1)
-                        Text("较上月 +6.8%，预算执行率 82%。").font(.system(size: 13)).foregroundStyle(Palette.muted)
+                        Text(store.format(monthTotal)).font(.system(size: 40, weight: .heavy)).tracking(-1)
+                        Text("\(comparisonText)，预算执行率 \(Int(monthTotal / max(store.monthlyBudget, 0.01) * 100))%。").font(.system(size: 13)).foregroundStyle(Palette.muted)
                     }.frame(maxWidth: .infinity, alignment: .leading)
                 }
                 HStack(spacing: 12) {
@@ -228,20 +250,32 @@ private struct HomeView: View {
                 }
             }
             VStack(spacing: 12) {
-                SectionHeading(title: "今日概览", subtitle: "8 笔支出，餐饮占比最高。", trailing: "Updated 2m ago")
-                MetricsRow(metrics: [("总支出", "¥ 418.20"), ("最大一笔", "¥ 128.80"), ("高频分类", "餐饮")])
+                SectionHeading(title: "今日概览", subtitle: "\(todayRecords.count) 笔支出，\(topTodayCategory)占比最高。")
+                MetricsRow(metrics: [("总支出", store.format(todayRecords.reduce(0) { $0 + $1.amount })), ("最大一笔", store.format(todayRecords.map(\.amount).max() ?? 0)), ("高频分类", topTodayCategory)])
             }
             VStack(spacing: 12) {
                 SectionHeading(title: "最近记录", subtitle: "按时间从新到旧排列。")
-                ExpenseRow(badge: "餐", color: .blue, title: "午餐", meta: "12:30 · 餐饮 · 食堂", amount: "¥ 45.00", note: "已同步")
-                ExpenseRow(badge: "交", color: .green, title: "地铁", meta: "09:15 · 交通 · 通勤", amount: "¥ 6.00", note: "已同步")
-                ExpenseRow(badge: "咖", color: .purple, title: "咖啡", meta: "08:45 · 餐饮 · 便利店", amount: "¥ 28.00", note: "已同步")
+                if store.records.isEmpty { Text("暂无记录，点击手动输入添加第一笔支出。").font(.caption).foregroundStyle(Palette.muted).softRow() }
+                ForEach(recentRecords.indices, id: \.self) { index in
+                    let record = recentRecords[index]
+                    let isOldYear = !Calendar.current.isDate(record.date, equalTo: .now, toGranularity: .year)
+                    let startsOldDay = isOldYear && (index == 0 || !Calendar.current.isDate(record.date, inSameDayAs: recentRecords[index - 1].date))
+                    if startsOldDay {
+                        let sameDay = store.records.filter { Calendar.current.isDate($0.date, inSameDayAs: record.date) }
+                        HStack { VStack(alignment: .leading, spacing: 3) { Text(record.date.formatted(.dateTime.year().month().day())).font(.system(size: 15, weight: .bold)); Text(record.date.formatted(.dateTime.weekday(.wide))).font(.caption).foregroundStyle(Palette.muted) }; Spacer(); VStack(alignment: .trailing) { Text(store.format(sameDay.reduce(0) { $0 + ($1.recordType == .income ? -$1.amount : $1.amount) })).bold(); Text("\(sameDay.count) 笔").font(.caption).foregroundStyle(Palette.muted) } }.softRow()
+                    }
+                    RecordRow(record: record, showsFullDate: isOldYear)
+                }
             }
             GlassCard {
                 VStack(spacing: 14) {
-                    SectionHeading(title: "预算提醒", subtitle: "本月餐饮预算已使用 68%。", trailing: "Healthy")
-                    ProgressLine(title: "餐饮", value: 0.68)
-                    ProgressLine(title: "交通", value: 0.42)
+                    let budgeted = store.categories.compactMap { category -> (ExpenseCategory, Double)? in guard let budget = category.budget, budget > 0 else { return nil }; return (category, budget) }
+                    let highest = budgeted.map { item in (item.0, monthRecords.filter { $0.categoryID == item.0.id }.reduce(0) { $0 + $1.amount } / item.1) }.max { $0.1 < $1.1 }
+                    SectionHeading(title: "预算提醒", subtitle: highest.map { "本月\($0.0.name)预算已使用 \(Int($0.1 * 100))%。" } ?? "在分类管理中设置分类预算。", trailing: (highest?.1 ?? 0) > 1 ? "Over" : "Healthy")
+                    ForEach(Array(budgeted.prefix(3)), id: \.0.id) { category, budget in
+                        let spent = monthRecords.filter { $0.categoryID == category.id }.reduce(0) { $0 + $1.amount }
+                        ProgressLine(title: category.name, value: spent / budget)
+                    }
                 }
             }
         }
@@ -249,7 +283,7 @@ private struct HomeView: View {
     }
 }
 
-private enum EntrySheet: Identifiable { case voice, manual; var id: Self { self } }
+private enum EntrySheet: Identifiable, Hashable { case voice, manual, edit(ExpenseRecord); var id: String { switch self { case .voice: "voice"; case .manual: "manual"; case .edit(let record): record.id.uuidString } } }
 
 private struct ActionCard: View {
     let icon: String, title: String, text: String, colors: [Color]
@@ -273,7 +307,7 @@ private struct ProgressLine: View {
             HStack { Text(title); Spacer(); Text("\(Int(value * 100))%") }.font(.system(size: 12)).foregroundStyle(Palette.muted)
             GeometryReader { geo in
                 Capsule().fill(Palette.line).overlay(alignment: .leading) {
-                    Capsule().fill(LinearGradient(colors: [Palette.primary, Palette.accent], startPoint: .leading, endPoint: .trailing)).frame(width: geo.size.width * value)
+                    Capsule().fill(LinearGradient(colors: [Palette.primary, Palette.accent], startPoint: .leading, endPoint: .trailing)).frame(width: geo.size.width * min(max(value, 0), 1))
                 }
             }.frame(height: 10)
         }
@@ -281,36 +315,72 @@ private struct ProgressLine: View {
 }
 
 private struct EntrySheetView: View {
+    @EnvironmentObject private var store: AppStore
     let type: EntrySheet
     @Environment(\.dismiss) private var dismiss
-    @State private var amount = ""
-    @State private var title = ""
-    @State private var note = ""
+    @State private var amount: String
+    @State private var title: String
+    @State private var note: String
+    @State private var categoryID: UUID?
+    @State private var date: Date
+    @State private var recordType: RecordType
+    init(type: EntrySheet) {
+        self.type = type
+        if case .edit(let record) = type {
+            _amount = State(initialValue: String(format: "%.2f", record.amount)); _title = State(initialValue: record.title); _note = State(initialValue: record.note); _categoryID = State(initialValue: record.categoryID); _date = State(initialValue: record.date); _recordType = State(initialValue: record.recordType)
+        } else {
+            _amount = State(initialValue: ""); _title = State(initialValue: ""); _note = State(initialValue: ""); _categoryID = State(initialValue: nil); _date = State(initialValue: .now); _recordType = State(initialValue: .expense)
+        }
+    }
+    private var isVoice: Bool { if case .voice = type { true } else { false } }
+    private var editingRecord: ExpenseRecord? { if case .edit(let record) = type { record } else { nil } }
     var body: some View {
         ZStack {
             AppBackground()
             VStack(spacing: 16) {
                 HStack(alignment: .top) {
                     VStack(alignment: .leading, spacing: 4) {
-                        Text(type == .voice ? "语音输入" : "添加支出").font(.title3.bold())
-                        Text(type == .voice ? "长按开始录音，松开发送识别结果。" : "保留完整金额、分类和备注字段。").font(.caption).foregroundStyle(Palette.muted)
+                        Text(isVoice ? "语音输入" : editingRecord == nil ? "添加支出" : "编辑支出").font(.title3.bold())
+                        Text(isVoice ? "长按开始录音，松开发送识别结果。" : "保留完整金额、分类、时间和备注字段。").font(.caption).foregroundStyle(Palette.muted)
                     }
                     Spacer(); Button("关闭") { dismiss() }.buttonStyle(SoftButtonStyle())
                 }
-                if type == .voice {
+                if isVoice {
                     GlassCard {
                         VStack(spacing: 16) { Badge(text: "V", color: .cyan, size: 84); Text("识别示例：午餐 45 元，餐饮，12:30").font(.caption).foregroundStyle(Palette.muted) }.frame(maxWidth: .infinity).padding(.vertical, 20)
                     }
                     Button("开始录音") { }.buttonStyle(GradientButtonStyle())
                 } else {
+                    Picker("类型", selection: $recordType) { ForEach(RecordType.allCases, id: \.self) { Text($0.rawValue).tag($0) } }.pickerStyle(.segmented)
                     DarkField(label: "金额", placeholder: "0.00", text: $amount)
                     DarkField(label: "标题", placeholder: "例如：午餐 / 咖啡 / 打车", text: $title)
                     DarkField(label: "备注", placeholder: "可选：商户、地点或付款方式", text: $note)
-                    Button("保存") { dismiss() }.buttonStyle(GradientButtonStyle())
+                    DatePicker("时间", selection: $date, displayedComponents: [.date, .hourAndMinute])
+                        .datePickerStyle(.compact)
+                        .softRow()
+                    Picker("分类", selection: $categoryID) {
+                        Text("请选择分类").tag(UUID?.none)
+                        ForEach(store.categories) { Text($0.name).tag(Optional($0.id)) }
+                    }.pickerStyle(.menu).softRow()
+                    Button("保存") {
+                        guard let value = Double(amount), value > 0, !title.trimmingCharacters(in: .whitespaces).isEmpty, let categoryID else { return }
+                        if let editingRecord, let index = store.records.firstIndex(where: { $0.id == editingRecord.id }) { store.records[index] = ExpenseRecord(id: editingRecord.id, amount: value, title: title, note: note, categoryID: categoryID, date: date, type: recordType) } else { store.records.append(ExpenseRecord(amount: value, title: title, note: note, categoryID: categoryID, date: date, type: recordType)) }
+                        dismiss()
+                    }.buttonStyle(GradientButtonStyle())
                 }
                 Spacer()
             }.padding(18).padding(.top, 12).frame(maxWidth: 430)
-        }.presentationDetents(type == .voice ? [.medium] : [.large]).presentationDragIndicator(.visible)
+        }.presentationDetents(isVoice ? [.medium] : [.large]).presentationDragIndicator(.visible)
+    }
+}
+
+private struct RecordRow: View {
+    @EnvironmentObject private var store: AppStore
+    let record: ExpenseRecord
+    var showsFullDate = false
+    var body: some View {
+        let category = store.category(for: record.categoryID)
+        ExpenseRow(badge: String(category?.name.prefix(1) ?? "?"), color: record.recordType == .income ? .green : BadgeColor.from(category?.colorIndex ?? 0), title: record.title, meta: "\(record.date.formatted(date: showsFullDate ? .numeric : .omitted, time: .shortened)) · \(record.recordType.rawValue) · \(category?.name ?? "未分类")", amount: (record.recordType == .income ? "+" : "") + store.format(record.amount), note: record.note.isEmpty ? "本地" : record.note)
     }
 }
 
@@ -326,35 +396,71 @@ private struct DarkField: View {
 }
 
 private struct HistoryView: View {
+    @EnvironmentObject private var store: AppStore
     @State private var search = ""
+    @State private var showFilters = false
+    @State private var selectedCategory: UUID?
+    @State private var minimumAmount = ""
+    @State private var editingRecord: ExpenseRecord?
+    @State private var dateScope = 0
+    private var filtered: [ExpenseRecord] {
+        store.records.filter { record in
+            let category = store.category(for: record.categoryID)?.name ?? ""
+            let query = search.trimmingCharacters(in: .whitespacesAndNewlines)
+            let matchesText = query.isEmpty || record.title.localizedCaseInsensitiveContains(query) || record.note.localizedCaseInsensitiveContains(query) || category.localizedCaseInsensitiveContains(query)
+            let matchesCategory = selectedCategory == nil || record.categoryID == selectedCategory
+            let matchesAmount = Double(minimumAmount).map { record.amount >= $0 } ?? true
+            let matchesDate = dateScope == 0 || (dateScope == 1 && Calendar.current.isDateInToday(record.date)) || (dateScope == 2 && Calendar.current.isDate(record.date, equalTo: .now, toGranularity: .weekOfYear))
+            return matchesText && matchesCategory && matchesAmount && matchesDate
+        }.sorted { $0.date > $1.date }
+    }
+    private var grouped: [(Date, [ExpenseRecord])] {
+        Dictionary(grouping: filtered) { Calendar.current.startOfDay(for: $0.date) }.map { ($0.key, $0.value.sorted { $0.date > $1.date }) }.sorted { $0.0 > $1.0 }
+    }
     var body: some View {
         Screen {
             Hero(eyebrow: "Timeline", title: "历史", subtitle: "按日期聚合，重点记录一眼可扫。", pill: "Filters") {
                 HStack(spacing: 10) {
                     TextField("搜索标题、分类、备注...", text: $search).padding(13).background(Palette.soft).clipShape(RoundedRectangle(cornerRadius: 18)).overlay(RoundedRectangle(cornerRadius: 18).stroke(Palette.line))
-                    Button("筛选") { }.buttonStyle(GradientButtonStyle(compact: true))
+                    Button("筛选") { showFilters = true }.buttonStyle(GradientButtonStyle(compact: true))
                 }
             }
             GlassCard {
                 VStack(alignment: .leading, spacing: 14) {
-                    SectionHeading(title: "快捷筛选", subtitle: "日期、分类和金额段。")
-                    FlowPills(items: ["今天", "本周", "餐饮", "交通", "大于 100 元"])
+                    SectionHeading(title: "快捷筛选", subtitle: "分类和金额段。")
+                    HStack { Button("今天") { dateScope = 1 }.buttonStyle(SoftButtonStyle()); Button("本周") { dateScope = 2 }.buttonStyle(SoftButtonStyle()); if let first = store.categories.first { Button(first.name) { selectedCategory = first.id }.buttonStyle(SoftButtonStyle()) } }
+                    HStack { Button("大于 100") { minimumAmount = "100" }.buttonStyle(SoftButtonStyle()); Button("清除") { dateScope = 0; selectedCategory = nil; minimumAmount = "" }.buttonStyle(SoftButtonStyle()) }
                 }
             }
-            HistoryGroup(day: "今天", date: "1 月 15 日 · 星期一", total: "¥ 79.00", count: "3 笔", rows: [
-                ("餐", .blue, "午餐", "12:30 · 餐饮 · 支付宝", "¥ 45.00", "食堂"),
-                ("咖", .purple, "咖啡", "08:45 · 餐饮 · 便利店", "¥ 28.00", "自提"),
-                ("交", .green, "地铁", "08:15 · 交通 · 通勤", "¥ 6.00", "已记")])
-            HistoryGroup(day: "昨天", date: "1 月 14 日 · 星期日", total: "¥ 156.50", count: "5 笔", rows: [
-                ("影", .pink, "电影票", "19:30 · 娱乐 · 商城", "¥ 58.00", "双人"),
-                ("餐", .blue, "晚餐", "18:15 · 餐饮 · 餐厅", "¥ 85.50", "含小食"),
-                ("公", .green, "公交", "17:45 · 交通 · 公交卡", "¥ 2.00", "刷卡"),
-                ("购", .amber, "购物", "15:20 · 购物 · 商超", "¥ 128.80", "已记")])
-            GlassCard {
-                VStack(spacing: 14) { SectionHeading(title: "记录密度", subtitle: "帮助快速发现高频日期。", trailing: "Heatmap"); MetricsRow(metrics: [("高峰时段", "12:00"), ("最多分类", "餐饮"), ("补录率", "11%")]) }
+            if grouped.isEmpty { Text(search.isEmpty ? "暂无本地记录。" : "没有匹配的记录。").foregroundStyle(Palette.muted).softRow() }
+            ForEach(grouped, id: \.0) { day, records in
+                VStack(spacing: 12) {
+                    GlassCard {
+                        HStack {
+                            VStack(alignment: .leading, spacing: 4) { Text(dayTitle(day)).font(.title3.bold()); Text(day.formatted(.dateTime.month().day().weekday(.wide))).font(.caption).foregroundStyle(Palette.muted) }
+                            Spacer(); VStack(alignment: .trailing, spacing: 3) { Text(store.format(records.reduce(0) { $0 + ($1.recordType == .income ? -$1.amount : $1.amount) })).font(.system(size: 16, weight: .bold)); Text("\(records.count) 笔").font(.caption).foregroundStyle(Palette.muted) }
+                        }
+                    }
+                    ForEach(records) { record in Button { editingRecord = record } label: { RecordRow(record: record, showsFullDate: !Calendar.current.isDate(record.date, equalTo: .now, toGranularity: .year)) }.buttonStyle(.plain) }
+                }
             }
         }
+        .sheet(isPresented: $showFilters) {
+            NavigationStack {
+                Form {
+                    Picker("日期", selection: $dateScope) { Text("全部日期").tag(0); Text("今天").tag(1); Text("本周").tag(2) }
+                    Picker("分类", selection: $selectedCategory) {
+                        Text("全部分类").tag(UUID?.none)
+                        ForEach(store.categories) { Text($0.name).tag(Optional($0.id)) }
+                    }
+                    TextField("最低金额", text: $minimumAmount).keyboardType(.decimalPad)
+                    Button("清除筛选") { dateScope = 0; selectedCategory = nil; minimumAmount = "" }
+                }.navigationTitle("筛选记录").toolbar { ToolbarItem(placement: .confirmationAction) { Button("完成") { showFilters = false } } }
+            }.presentationDetents([.medium])
+        }
+        .sheet(item: $editingRecord) { EntrySheetView(type: .edit($0)) }
     }
+    private func dayTitle(_ date: Date) -> String { if Calendar.current.isDateInToday(date) { return "今天" }; if Calendar.current.isDateInYesterday(date) { return "昨天" }; if !Calendar.current.isDate(date, equalTo: .now, toGranularity: .year) { return date.formatted(.dateTime.year().month().day()) }; return date.formatted(.dateTime.month().day()) }
 }
 
 private struct FlowPills: View {
@@ -387,35 +493,53 @@ private struct HistoryGroup: View {
 }
 
 private struct StatisticsView: View {
+    @EnvironmentObject private var store: AppStore
     @State private var period = 0
-    private let sets = [[0.34, 0.61, 0.48, 0.72, 0.57, 0.83, 0.66], [0.52, 0.75, 0.64, 0.88, 0.72, 0.58, 0.94], [0.46, 0.55, 0.69, 0.78, 0.88, 0.74, 0.96]]
+    private var calendar: Calendar { .current }
+    private var scopedRecords: [ExpenseRecord] { store.records.filter { $0.recordType == .expense && interval(containing: .now).contains($0.date) } }
+    private var total: Double { scopedRecords.reduce(0) { $0 + $1.amount } }
+    private var trend: [(String, Double)] {
+        (0..<7).map { offset in
+            let date: Date
+            if period == 0 { date = calendar.date(byAdding: .month, value: offset - 6, to: .now)! }
+            else if period == 1 { date = calendar.date(byAdding: .month, value: (offset - 6) * 3, to: .now)! }
+            else { date = calendar.date(byAdding: .year, value: offset - 6, to: .now)! }
+            let range = interval(containing: date)
+            let sum = store.records.filter { $0.recordType == .expense && range.contains($0.date) }.reduce(0) { $0 + $1.amount }
+            let year = calendar.component(.year, from: date)
+            let label = period == 0 ? date.formatted(.dateTime.month(.abbreviated)) : period == 1 ? "\(String(year).suffix(2)) Q\((calendar.component(.month, from: date) - 1) / 3 + 1)" : String(year)
+            return (label, sum)
+        }
+    }
+    private var categoryTotals: [(ExpenseCategory, Double)] { store.categories.map { category in (category, scopedRecords.filter { $0.categoryID == category.id }.reduce(0) { $0 + $1.amount }) }.filter { $0.1 > 0 }.sorted { $0.1 > $1.1 } }
+    private func interval(containing date: Date) -> Range<Date> {
+        if period == 0 { return calendar.dateInterval(of: .month, for: date)!.start..<calendar.dateInterval(of: .month, for: date)!.end }
+        if period == 2 { return calendar.dateInterval(of: .year, for: date)!.start..<calendar.dateInterval(of: .year, for: date)!.end }
+        let year = calendar.component(.year, from: date), month = calendar.component(.month, from: date), startMonth = ((month - 1) / 3) * 3 + 1
+        let start = calendar.date(from: DateComponents(year: year, month: startMonth, day: 1))!, end = calendar.date(byAdding: .month, value: 3, to: start)!
+        return start..<end
+    }
+    private var periodName: String { ["本月", "本季度", "本年"][period] }
     var body: some View {
         Screen {
-            Hero(eyebrow: "Analytics", title: "统计", subtitle: "用更少的图表，呈现更关键的消费变化。", pill: "Month") {
+            Hero(eyebrow: "Analytics", title: "统计", subtitle: "用更少的图表，呈现更关键的消费变化。", pill: ["Month", "Quarter", "Year"][period]) {
                 SegmentedPicker(items: ["月", "季度", "年"], selection: $period)
             }
-            MetricsRow(metrics: [("本月支出", "¥ 3,280"), ("日均支出", "¥ 109"), ("节省率", "12.4%")])
+            MetricsRow(metrics: [("\(periodName)支出", store.format(total)), ("平均每笔", store.format(scopedRecords.isEmpty ? 0 : total / Double(scopedRecords.count))), ("记录数", "\(scopedRecords.count)")])
             GlassCard {
                 VStack(spacing: 16) {
                     SectionHeading(title: "支出趋势", subtitle: "切换维度后，柱状高度会更新。", trailing: "Trend")
-                    TrendChart(values: sets[period])
+                    TrendChart(items: trend)
                 }
             }
             GlassCard {
                 VStack(spacing: 16) {
                     SectionHeading(title: "分类分布", subtitle: "用圆环图概括消费结构。", trailing: "Mix")
-                    DonutChart()
-                    ExpenseRow(badge: "", color: .blue, title: "餐饮", meta: "44% · 预算最容易超支", amount: "¥ 1,445", note: "43.9%")
-                    ExpenseRow(badge: "", color: .green, title: "交通", meta: "19% · 日常通勤", amount: "¥ 620", note: "18.9%")
-                    ExpenseRow(badge: "", color: .purple, title: "购物", meta: "15% · 计划性消费", amount: "¥ 495", note: "15.1%")
-                    ExpenseRow(badge: "", color: .amber, title: "娱乐", meta: "12% · 周末开销", amount: "¥ 392", note: "11.9%")
-                }
-            }
-            GlassCard {
-                VStack(spacing: 14) {
-                    SectionHeading(title: "关键结论", subtitle: "用摘要卡片替代冗长说明。")
-                    InsightRow(title: "餐饮连续 3 周上升", subtitle: "建议在工作日午餐设置上限。", tag: "Alert")
-                    InsightRow(title: "交通成本较上月下降", subtitle: "通勤结构稳定，变化不大。", tag: "Good")
+                    DonutChart(items: categoryTotals.map { ($0.1, BadgeColor.from($0.0.colorIndex).colors[0]) }, total: store.format(total), subtitle: "\(periodName)总支出")
+                    if scopedRecords.isEmpty { Text("该周期暂无记录。").font(.caption).foregroundStyle(Palette.muted) }
+                    ForEach(categoryTotals, id: \.0.id) { category, amount in
+                        ExpenseRow(badge: "", color: .from(category.colorIndex), title: category.name, meta: "\(scopedRecords.filter { $0.categoryID == category.id }.count) 笔 · 分类占比", amount: store.format(amount), note: total == 0 ? "0%" : "\((amount / total * 100).formatted(.number.precision(.fractionLength(1))))%")
+                    }
                 }
             }
         }
@@ -439,31 +563,35 @@ private struct SegmentedPicker: View {
 }
 
 private struct TrendChart: View {
-    let values: [Double]
-    let labels = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+    let items: [(String, Double)]
+    private var maximum: Double { max(items.map(\.1).max() ?? 0, 0.01) }
     var body: some View {
         HStack(alignment: .bottom, spacing: 10) {
-            ForEach(values.indices, id: \.self) { index in
+            ForEach(items.indices, id: \.self) { index in
                 VStack(spacing: 8) {
                     GeometryReader { geo in
                         RoundedRectangle(cornerRadius: 8).fill(LinearGradient(colors: [Palette.primary.opacity(0.9), Palette.accent.opacity(0.9)], startPoint: .top, endPoint: .bottom))
-                            .frame(height: max(16, geo.size.height * values[index])).frame(maxHeight: .infinity, alignment: .bottom)
+                            .frame(height: max(items[index].1 > 0 ? 8 : 0, geo.size.height * items[index].1 / maximum)).frame(maxHeight: .infinity, alignment: .bottom)
                     }.frame(height: 150)
-                    Text(labels[index]).font(.system(size: 10)).foregroundStyle(Palette.muted)
+                    Text(items[index].0).font(.system(size: 9)).foregroundStyle(Palette.muted).lineLimit(1).minimumScaleFactor(0.7)
                 }.frame(maxWidth: .infinity)
             }
-        }.animation(.easeInOut(duration: 0.3), value: values)
+        }.animation(.easeInOut(duration: 0.3), value: items.map(\.1))
     }
 }
 
 private struct DonutChart: View {
-    let segments: [(Double, Color)] = [(0.44, .cyan), (0.19, Palette.success), (0.15, .purple), (0.13, Palette.accent), (0.09, Palette.pink)]
+    let items: [(Double, Color)]
+    let total: String
+    let subtitle: String
+    private var sum: Double { items.reduce(0) { $0 + $1.0 } }
+    private var segments: [(Double, Color)] { sum == 0 ? [(1, Palette.line)] : items.map { ($0.0 / sum, $0.1) } }
     var body: some View {
         ZStack {
             ForEach(segments.indices, id: \.self) { index in
                 Circle().trim(from: start(index), to: start(index) + segments[index].0).stroke(segments[index].1, style: StrokeStyle(lineWidth: 28, lineCap: .butt)).rotationEffect(.degrees(-90))
             }
-            VStack(spacing: 3) { Text("¥ 3,280").font(.system(size: 21, weight: .bold)); Text("本月总支出").font(.caption).foregroundStyle(Palette.muted) }
+            VStack(spacing: 3) { Text(total).font(.system(size: 21, weight: .bold)).minimumScaleFactor(0.7); Text(subtitle).font(.caption).foregroundStyle(Palette.muted) }
         }.frame(width: 158, height: 158).padding(.vertical, 6)
     }
     private func start(_ index: Int) -> Double { segments.prefix(index).reduce(0) { $0 + $1.0 } }
@@ -478,9 +606,13 @@ private struct InsightRow: View {
 }
 
 private struct SettingsView: View {
+    @EnvironmentObject private var store: AppStore
     @Binding var isDarkMode: Bool
-    @State private var voice = true
-    @State private var budget = false
+    @State private var showCurrency = false
+    @State private var editingCategory: ExpenseCategory?
+    @State private var exporting = false
+    @State private var showClearConfirmation = false
+    @State private var aboutPage: AboutPage?
     var body: some View {
         Screen {
             Hero(eyebrow: "System", title: "设置", subtitle: "管理货币、分类、同步和隐私。", pill: "Profile") {
@@ -489,29 +621,36 @@ private struct SettingsView: View {
                 }
             }
             SettingsCard(title: "货币", subtitle: "支持多币种和显示格式切换。") {
-                HStack { Badge(text: "¥", color: .blue); VStack(alignment: .leading, spacing: 3) { Text("人民币").font(.system(size: 15, weight: .bold)); Text("CNY · 当前使用").font(.caption).foregroundStyle(Palette.muted) }; Spacer(); Pill("Edit") }.softRow()
+                Button { showCurrency = true } label: { HStack { Badge(text: store.currency.symbol, color: .blue); VStack(alignment: .leading, spacing: 3) { Text(store.currency.name).font(.system(size: 15, weight: .bold)); Text("\(store.currency.code) · 当前使用").font(.caption).foregroundStyle(Palette.muted) }; Spacer(); Image(systemName: "chevron.right").foregroundStyle(Palette.muted) }.softRow() }.buttonStyle(.plain)
             }
             SettingsCard(title: "常用选项", subtitle: "使用开关控制自动化和体验偏好。") {
-                ToggleRow(title: "语音自动识别", subtitle: "录音后自动生成金额、标题和分类。", isOn: $voice)
+                ToggleRow(title: "语音自动识别", subtitle: "录音后自动生成金额、标题和分类。", isOn: $store.voiceRecognition)
                 ToggleRow(title: "深色主题", subtitle: "关闭后切换为明亮主题。", isOn: $isDarkMode)
-                ToggleRow(title: "每日预算提醒", subtitle: "当支出接近上限时进行提示。", isOn: $budget)
+                ToggleRow(title: "每日预算提醒", subtitle: "当支出接近上限时进行提示。", isOn: $store.budgetReminder)
+                HStack { VStack(alignment: .leading, spacing: 4) { Text("每月总预算").font(.system(size: 14, weight: .bold)); Text("用于首页预算执行率核算").font(.caption).foregroundStyle(Palette.muted) }; Spacer(); TextField("0", value: $store.monthlyBudget, format: .number).keyboardType(.decimalPad).multilineTextAlignment(.trailing).frame(width: 100) }.softRow()
             }
             SettingsCard(title: "分类管理", subtitle: "按颜色和图标区分消费语义。") {
-                ManageRow(badge: "餐", color: .blue, title: "餐饮", subtitle: "156 笔记录")
-                ManageRow(badge: "交", color: .green, title: "交通", subtitle: "89 笔记录")
-                ManageRow(badge: "购", color: .purple, title: "购物", subtitle: "43 笔记录")
+                ForEach(store.categories) { category in
+                    Button { editingCategory = category } label: { ManageRow(icon: category.icon, color: .from(category.colorIndex), title: category.name, subtitle: "\(store.records.filter { $0.categoryID == category.id }.count) 笔记录") }.buttonStyle(.plain)
+                }
+                Button("添加新分类") { editingCategory = ExpenseCategory(name: "", icon: "tag.fill", colorIndex: 0) }.buttonStyle(SoftButtonStyle(fullWidth: true))
             }
             SettingsCard(title: "数据与隐私", subtitle: "导出、备份和清除数据的高风险操作应清晰区分。") {
-                Button("导出 CSV") { }.buttonStyle(GradientButtonStyle())
+                Button("导出 CSV") { exporting = true }.buttonStyle(GradientButtonStyle())
                 Button("同步到 iCloud") { }.buttonStyle(SoftButtonStyle(fullWidth: true))
-                Button("清除全部数据") { }.buttonStyle(DangerButtonStyle())
+                Button("清除全部数据") { showClearConfirmation = true }.buttonStyle(DangerButtonStyle())
             }
             SettingsCard(title: "关于", subtitle: "版本信息、隐私和服务协议。") {
-                AboutRow(title: "版本", subtitle: "语音记账 PRD v2.0", tag: "Latest")
-                AboutRow(title: "隐私政策", subtitle: "查看数据收集和存储说明", tag: "Open")
-                AboutRow(title: "用户协议", subtitle: "查看使用条款", tag: "Open")
+                Button { aboutPage = .version } label: { AboutRow(title: "版本", subtitle: "语音记账 v2.0") }.buttonStyle(.plain)
+                Button { aboutPage = .privacy } label: { AboutRow(title: "隐私政策", subtitle: "查看数据收集和存储说明") }.buttonStyle(.plain)
+                Button { aboutPage = .agreement } label: { AboutRow(title: "用户协议", subtitle: "查看使用条款") }.buttonStyle(.plain)
             }
         }
+        .sheet(isPresented: $showCurrency) { CurrencyPicker() }
+        .sheet(item: $editingCategory) { CategoryEditor(category: $0) }
+        .sheet(item: $aboutPage) { AboutDetail(page: $0) }
+        .fileExporter(isPresented: $exporting, document: CSVDocument(data: store.csvData()), contentType: .commaSeparatedText, defaultFilename: "voice-account-\(Date.now.formatted(.iso8601.year().month().day()))") { _ in }
+        .confirmationDialog("确定清除全部本地记录？", isPresented: $showClearConfirmation, titleVisibility: .visible) { Button("清除全部数据", role: .destructive) { store.records.removeAll() }; Button("取消", role: .cancel) {} }
     }
 }
 
@@ -530,13 +669,79 @@ private struct ToggleRow: View {
 }
 
 private struct ManageRow: View {
-    let badge: String, color: BadgeColor, title: String, subtitle: String
-    var body: some View { HStack { Badge(text: badge, color: color); VStack(alignment: .leading, spacing: 3) { Text(title).font(.system(size: 15, weight: .bold)); Text(subtitle).font(.caption).foregroundStyle(Palette.muted) }; Spacer(); Pill("Manage") }.softRow() }
+    let icon: String, color: BadgeColor, title: String, subtitle: String
+    var body: some View { HStack { Image(systemName: icon).foregroundStyle(.white).frame(width: 42, height: 42).background(LinearGradient(colors: color.colors, startPoint: .topLeading, endPoint: .bottomTrailing)).clipShape(RoundedRectangle(cornerRadius: 14)); VStack(alignment: .leading, spacing: 3) { Text(title).font(.system(size: 15, weight: .bold)); Text(subtitle).font(.caption).foregroundStyle(Palette.muted) }; Spacer(); Image(systemName: "chevron.right").foregroundStyle(Palette.muted) }.softRow() }
 }
 
 private struct AboutRow: View {
-    let title: String, subtitle: String, tag: String
-    var body: some View { HStack { VStack(alignment: .leading, spacing: 3) { Text(title).font(.system(size: 15, weight: .bold)); Text(subtitle).font(.caption).foregroundStyle(Palette.muted) }; Spacer(); Pill(tag) }.softRow() }
+    let title: String, subtitle: String
+    var body: some View { HStack { VStack(alignment: .leading, spacing: 3) { Text(title).font(.system(size: 15, weight: .bold)); Text(subtitle).font(.caption).foregroundStyle(Palette.muted) }; Spacer() }.softRow() }
+}
+
+private struct CurrencyPicker: View {
+    @EnvironmentObject private var store: AppStore
+    @Environment(\.dismiss) private var dismiss
+    var body: some View { NavigationStack { List(AppCurrency.allCases) { currency in Button { store.currency = currency; dismiss() } label: { HStack { Text(currency.symbol).frame(width: 32); Text(currency.name); Spacer(); Text(currency.code).foregroundStyle(.secondary); if store.currency == currency { Image(systemName: "checkmark") } } } }.navigationTitle("选择货币").toolbar { Button("关闭") { dismiss() } } } }
+}
+
+private struct CategoryEditor: View {
+    @EnvironmentObject private var store: AppStore
+    @Environment(\.dismiss) private var dismiss
+    @State var category: ExpenseCategory
+    private let icons = ["fork.knife", "tram.fill", "bag.fill", "cart.fill", "house.fill", "gamecontroller.fill", "heart.fill", "book.fill", "tag.fill", "ellipsis.circle.fill"]
+    var body: some View {
+        NavigationStack { Form {
+            TextField("分类名称", text: $category.name)
+            TextField("每月分类预算", value: $category.budget, format: .number).keyboardType(.decimalPad)
+            Section("选择图标") {
+                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 10), count: 5), spacing: 10) {
+                    ForEach(icons, id: \.self) { icon in
+                        Button { category.icon = icon } label: {
+                            Image(systemName: icon)
+                                .font(.system(size: 18, weight: .semibold))
+                                .frame(maxWidth: .infinity)
+                                .frame(height: 46)
+                                .contentShape(Rectangle())
+                                .background(category.icon == icon ? Color.accentColor.opacity(0.25) : Color.secondary.opacity(0.08))
+                                .clipShape(RoundedRectangle(cornerRadius: 10))
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            }
+            Section("图标背景色") {
+                HStack(spacing: 12) {
+                    ForEach(0..<6) { index in
+                        Button { category.colorIndex = index } label: {
+                            Circle()
+                                .fill(LinearGradient(colors: BadgeColor.from(index).colors, startPoint: .topLeading, endPoint: .bottomTrailing))
+                                .frame(maxWidth: .infinity)
+                                .aspectRatio(1, contentMode: .fit)
+                                .contentShape(Circle())
+                                .overlay { if category.colorIndex == index { Image(systemName: "checkmark").font(.system(size: 13, weight: .bold)).foregroundStyle(.white) } }
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            }
+        }.navigationTitle(category.name.isEmpty ? "新分类" : "编辑分类").toolbar { ToolbarItem(placement: .cancellationAction) { Button("取消") { dismiss() } }; ToolbarItem(placement: .confirmationAction) { Button("保存") { guard !category.name.trimmingCharacters(in: .whitespaces).isEmpty else { return }; if let index = store.categories.firstIndex(where: { $0.id == category.id }) { store.categories[index] = category } else { store.categories.append(category) }; dismiss() } } } }
+    }
+}
+
+private enum AboutPage: String, Identifiable { case version = "版本", privacy = "隐私政策", agreement = "用户协议"; var id: String { rawValue } }
+private struct AboutDetail: View {
+    let page: AboutPage
+    @Environment(\.dismiss) private var dismiss
+    var text: String { switch page { case .version: "语音记账 v2.0\n数据保存在本机。"; case .privacy: "所有账目、分类和设置均保存在设备本地。应用不会主动上传或出售个人数据。导出文件由用户自行保管。"; case .agreement: "使用本应用即表示你同意自行核对记账信息。应用提供记录与统计工具，不构成财务建议。" } }
+    var body: some View { NavigationStack { ScrollView { Text(text).frame(maxWidth: .infinity, alignment: .leading).padding() }.navigationTitle(page.rawValue).toolbar { Button("完成") { dismiss() } } } }
+}
+
+private struct CSVDocument: FileDocument {
+    static var readableContentTypes: [UTType] { [.commaSeparatedText] }
+    let data: Data
+    init(data: Data) { self.data = data }
+    init(configuration: ReadConfiguration) throws { data = configuration.file.regularFileContents ?? Data() }
+    func fileWrapper(configuration: WriteConfiguration) throws -> FileWrapper { FileWrapper(regularFileWithContents: data) }
 }
 
 private extension View {
@@ -582,5 +787,8 @@ private struct DangerButtonStyle: ButtonStyle {
 }
 
 struct ContentView_Previews: PreviewProvider {
-    static var previews: some View { ContentView() }
+    static var previews: some View {
+        ContentView()
+            .environmentObject(AppStore())
+    }
 }

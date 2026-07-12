@@ -1,0 +1,91 @@
+# ==============================
+# macOS
+# ==============================
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon
+._*
+.Spotlight-V100
+.Trashes
+
+# ==============================
+# Xcode / Swift (VoiceAccout)
+# ==============================
+build/
+DerivedData/
+*.moved-aside
+*.pbxuser
+*.mode1v3
+*.mode2v3
+*.perspectivev3
+!default.pbxuser
+!default.mode1v3
+!default.mode2v3
+!default.perspectivev3
+
+## Xcode workspace / project user state (keep the shared workspace file, ignore per-user data)
+xcuserdata/
+*.xcuserstate
+*.xcscmblueprint
+*.xccheckout
+
+## Obj-C / Swift specific
+*.hmap
+
+## Playgrounds
+timeline.xctimeline
+playground.xcworkspace
+
+## Swift Package Manager
+.build/
+.swiftpm/
+
+## CocoaPods (uncomment if the project adopts CocoaPods)
+# Pods/
+
+## Carthage (uncomment if the project adopts Carthage)
+# Carthage/Build/
+
+## fastlane (uncomment if fastlane is added later)
+# fastlane/report.xml
+# fastlane/Preview.html
+# fastlane/screenshots/**/*.png
+# fastlane/test_output
+
+# ==============================
+# Static HTML prototypes (prototype / prototype_2_check / prototype_3 / prototype_4)
+# ==============================
+node_modules/
+dist/
+.cache/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+## Prototype folders themselves (draft UI, not part of the shipped app)
+prototype/
+prototype_2_check/
+prototype_3/
+prototype_4/
+prototype_5/
+
+# ==============================
+# Archives
+# ==============================
+*.zip
+*.rar
+*.7z
+*.tar
+*.tar.gz
+*.tgz
+归档.zip
+
+# ==============================
+# Editor / IDE
+# ==============================
+.vscode/
+.idea/
+*.swp
+*~

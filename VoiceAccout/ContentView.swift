@@ -649,7 +649,7 @@ private struct SettingsView: View {
         .sheet(isPresented: $showCurrency) { CurrencyPicker() }
         .sheet(item: $editingCategory) { CategoryEditor(category: $0) }
         .sheet(item: $aboutPage) { AboutDetail(page: $0) }
-        .fileExporter(isPresented: $exporting, document: CSVDocument(data: store.csvData()), contentType: .commaSeparatedText, defaultFilename: "voice-account-\(Date.now.formatted(.iso8601.year().month().day()))") { _ in }
+        .fileExporter(isPresented: $exporting, document: CSVDocument(data: store.csvData(isDarkMode: isDarkMode)), contentType: .commaSeparatedText, defaultFilename: "voice-account-\(Date.now.formatted(.iso8601.year().month().day()))") { _ in }
         .confirmationDialog("确定清除全部本地记录？", isPresented: $showClearConfirmation, titleVisibility: .visible) { Button("清除全部数据", role: .destructive) { store.records.removeAll() }; Button("取消", role: .cancel) {} }
     }
 }

@@ -61,9 +61,11 @@ final class AppStore: ObservableObject {
     @Published var monthlyBudget = 4000.0 { didSet { save() } }
 
     private let key = "VoiceAccount.localData.v1"
+    private let defaults: UserDefaults
     private var isLoading = true
 
     init(defaults: UserDefaults = .standard) {
+        self.defaults = defaults
         if let data = defaults.data(forKey: key), let value = try? JSONDecoder().decode(StoredData.self, from: data) {
             records = value.records
             categories = value.categories
@@ -94,23 +96,54 @@ final class AppStore: ObservableObject {
         return formatter.string(from: NSNumber(value: amount)) ?? "\(currency.symbol)\(amount)"
     }
 
-    func csvData() -> Data {
-        var lines = ["id,date,type,amount,currency,title,category,note"]
+    func csvData(isDarkMode: Bool) -> Data {
+        let header = ["data_type", "id", "date", "record_type", "amount", "currency", "title", "note", "category_id", "category_name", "category_icon", "category_color_index", "category_budget", "setting_key", "setting_value"]
+        var rows = [header]
+
+        let settings: [(String, String)] = [
+            ("currency", currency.rawValue),
+            ("voice_recognition", String(voiceRecognition)),
+            ("budget_reminder", String(budgetReminder)),
+            ("monthly_budget", Self.decimalString(monthlyBudget)),
+            ("dark_mode", String(isDarkMode))
+        ]
+        rows.append(contentsOf: settings.map { key, value in
+            ["setting", "", "", "", "", "", "", "", "", "", "", "", "", key, value]
+        })
+
+        for category in categories.sorted(by: { $0.name.localizedStandardCompare($1.name) == .orderedAscending }) {
+            rows.append([
+                "category", category.id.uuidString, "", "", "", "", "", "", "", category.name,
+                category.icon, String(category.colorIndex), category.budget.map { Self.decimalString($0) } ?? "", "", ""
+            ])
+        }
+
         let formatter = ISO8601DateFormatter()
         for record in records.sorted(by: { $0.date < $1.date }) {
-            let values = [record.id.uuidString, formatter.string(from: record.date), record.recordType.rawValue, String(format: "%.2f", record.amount), currency.code, record.title, category(for: record.categoryID)?.name ?? "", record.note]
-            lines.append(values.map(Self.csvEscape).joined(separator: ","))
+            rows.append([
+                "record", record.id.uuidString, formatter.string(from: record.date), record.recordType.rawValue,
+                Self.decimalString(record.amount, fractionDigits: 2), currency.code, record.title, record.note,
+                record.categoryID.uuidString, category(for: record.categoryID)?.name ?? "", "", "", "", "", ""
+            ])
         }
-        return ("\u{FEFF}" + lines.joined(separator: "\r\n")).data(using: .utf8) ?? Data()
+        let csv = rows.map { $0.map(Self.csvEscape).joined(separator: ",") }.joined(separator: "\r\n")
+        return ("\u{FEFF}" + csv).data(using: .utf8) ?? Data()
     }
 
     private static func csvEscape(_ value: String) -> String {
         "\"" + value.replacingOccurrences(of: "\"", with: "\"\"") + "\""
     }
 
+    private static func decimalString(_ value: Double, fractionDigits: Int? = nil) -> String {
+        if let fractionDigits {
+            return String(format: "%.*f", locale: Locale(identifier: "en_US_POSIX"), fractionDigits, value)
+        }
+        return String(value)
+    }
+
     private func save() {
         guard !isLoading else { return }
         let value = StoredData(records: records, categories: categories, currency: currency, voiceRecognition: voiceRecognition, budgetReminder: budgetReminder, monthlyBudget: monthlyBudget)
-        if let data = try? JSONEncoder().encode(value) { UserDefaults.standard.set(data, forKey: key) }
+        if let data = try? JSONEncoder().encode(value) { defaults.set(data, forKey: key) }
     }
 }

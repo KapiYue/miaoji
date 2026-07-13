@@ -288,7 +288,7 @@ private struct HomeView: View {
                 }
             }
         }
-        .sheet(item: $sheet) { type in EntrySheetView(type: type) }
+        .fullScreenCover(item: $sheet) { type in EntrySheetView(type: type) }
     }
 }
 
@@ -334,6 +334,9 @@ private struct EntrySheetView: View {
     @State private var date: Date
     @State private var recordType: RecordType
     @State private var showsDateEditor = false
+    @FocusState private var focusedField: EntryField?
+
+    private enum EntryField: Hashable { case amount, title, note }
     init(type: EntrySheet) {
         self.type = type
         if case .edit(let record) = type {
@@ -345,9 +348,15 @@ private struct EntrySheetView: View {
     private var isVoice: Bool { if case .voice = type { true } else { false } }
     private var editingRecord: ExpenseRecord? { if case .edit(let record) = type { record } else { nil } }
     var body: some View {
-        ZStack {
-            AppBackground()
-            VStack(spacing: 16) {
+        GeometryReader { proxy in
+            ZStack {
+                Rectangle()
+                    .fill(.ultraThinMaterial)
+                    .background(Color.black.opacity(0.2))
+                    .ignoresSafeArea()
+
+                ScrollView(showsIndicators: false) {
+                    VStack(spacing: 16) {
                 HStack(alignment: .top) {
                     VStack(alignment: .leading, spacing: 4) {
                         Text(isVoice ? "语音输入" : editingRecord == nil ? "添加支出" : "编辑支出").font(.title3.bold())
@@ -365,7 +374,9 @@ private struct EntrySheetView: View {
                         Picker("类型", selection: $recordType) { ForEach(RecordType.allCases, id: \.self) { Text($0.rawValue).tag($0) } }.pickerStyle(.segmented)
                     }
                     DarkField(label: "金额", placeholder: "0.00", text: $amount, keyboard: .decimalPad)
+                        .focused($focusedField, equals: .amount)
                     DarkField(label: "标题", placeholder: "例如：午餐 / 咖啡 / 打车", text: $title)
+                        .focused($focusedField, equals: .title)
                     VStack(alignment: .leading, spacing: 8) {
                         Text("分类").font(.caption).foregroundStyle(Palette.muted)
                         Menu {
@@ -395,6 +406,11 @@ private struct EntrySheetView: View {
                         .padding(.horizontal, 13).frame(maxWidth: .infinity).frame(height: 48)
                         .background(Palette.soft).clipShape(RoundedRectangle(cornerRadius: 18))
                         .overlay(RoundedRectangle(cornerRadius: 18).stroke(Palette.line))
+                        if categoryID == nil {
+                            Text(store.categories.isEmpty ? "请先在设置中添加支出分类" : "请选择一个分类")
+                                .font(.caption2)
+                                .foregroundStyle(Palette.accent)
+                        }
                     }
                     VStack(alignment: .leading, spacing: 8) {
                         Text("时间").font(.caption).foregroundStyle(Palette.muted)
@@ -410,24 +426,33 @@ private struct EntrySheetView: View {
                             .overlay(RoundedRectangle(cornerRadius: 18).stroke(Palette.line))
                     }
                     DarkTextEditor(label: "备注", placeholder: "可选：商户、地点或付款方式", text: $note)
+                        .focused($focusedField, equals: .note)
                     HStack(spacing: 12) {
                         Button("取消") { dismiss() }.buttonStyle(SoftButtonStyle(fullWidth: true))
                         Button("保存", action: save).buttonStyle(GradientButtonStyle())
                             .disabled(!canSave).opacity(canSave ? 1 : 0.55)
                     }
                 }
-                Spacer()
+                    }
+                    .padding(18)
+                    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 30))
+                    .overlay(RoundedRectangle(cornerRadius: 30).stroke(Palette.line))
+                    .shadow(color: .black.opacity(0.35), radius: 30, y: 16)
+                    .frame(maxWidth: 430)
+                    .padding(.horizontal, 18)
+                    .padding(.vertical, 24)
+                }
+                .frame(width: proxy.size.width, height: proxy.size.height)
+                .scrollDismissesKeyboard(.interactively)
             }
-            .padding(18).padding(.top, 12).frame(maxWidth: 430)
-            .background(LinearGradient(colors: [Palette.surfaceTop, Palette.surfaceBottom], startPoint: .top, endPoint: .bottom))
-            .clipShape(RoundedRectangle(cornerRadius: 30))
-            .overlay(RoundedRectangle(cornerRadius: 30).stroke(Palette.line))
-            .shadow(color: .black.opacity(0.35), radius: 30, y: 16)
-            .padding(18)
         }
-        .presentationDetents(isVoice ? [.medium] : [.height(editingRecord == nil ? 660 : 710)])
-        .presentationDragIndicator(.hidden)
+        .ignoresSafeArea(.keyboard)
         .presentationBackground(.clear)
+        .onAppear {
+            if editingRecord == nil, categoryID == nil {
+                categoryID = store.categories.first?.id
+            }
+        }
         .sheet(isPresented: $showsDateEditor) { DateTimeEditor(date: $date) }
     }
 
@@ -626,7 +651,7 @@ private struct HistoryView: View {
                 }.navigationTitle("筛选记录").toolbar { ToolbarItem(placement: .confirmationAction) { Button("完成") { showFilters = false } } }
             }.presentationDetents([.medium])
         }
-        .sheet(item: $editingRecord) { EntrySheetView(type: .edit($0)) }
+        .fullScreenCover(item: $editingRecord) { EntrySheetView(type: .edit($0)) }
     }
     private func dayTitle(_ date: Date) -> String { if Calendar.current.isDateInToday(date) { return "今天" }; if Calendar.current.isDateInYesterday(date) { return "昨天" }; return store.formatDate(date) }
 }

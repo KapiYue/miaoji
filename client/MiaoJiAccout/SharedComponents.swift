@@ -12,6 +12,24 @@ enum AppTab: CaseIterable {
         case .settings: "设置"
         }
     }
+
+    var icon: String {
+        switch self {
+        case .home: "house"
+        case .statistics: "chart.bar"
+        case .history: "clock.arrow.circlepath"
+        case .settings: "gearshape"
+        }
+    }
+
+    var selectedIcon: String {
+        switch self {
+        case .home: "house.fill"
+        case .statistics: "chart.bar.fill"
+        case .history: "clock.arrow.circlepath"
+        case .settings: "gearshape.fill"
+        }
+    }
 }
 
 enum Palette {
@@ -205,10 +223,36 @@ struct FloatingTabBar: View {
     var body: some View {
         HStack(spacing: 0) {
             ForEach(AppTab.allCases, id: \.self) { tab in
-                Button { withAnimation(.easeOut(duration: 0.18)) { selection = tab } } label: {
-                    VStack(spacing: 6) { Circle().fill(selection == tab ? Palette.text : Palette.muted.opacity(0.9)).frame(width: 8, height: 8); Text(tab.title).font(.system(size: 12, weight: .semibold)).foregroundStyle(selection == tab ? Palette.text : Palette.muted) }
-                        .frame(maxWidth: .infinity).padding(.vertical, 11).background(selection == tab ? Palette.primary.opacity(0.09) : .clear)
-                }.buttonStyle(.plain)
+                let isSelected = selection == tab
+                Button {
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.78)) { selection = tab }
+                } label: {
+                    VStack(spacing: 4) {
+                        ZStack {
+                            if isSelected {
+                                Capsule()
+                                    .fill(LinearGradient(colors: [Palette.primary, Palette.accent.opacity(0.9)], startPoint: .leading, endPoint: .trailing))
+                                    .shadow(color: Palette.primary.opacity(0.25), radius: 8, y: 3)
+                            }
+                            Image(systemName: isSelected ? tab.selectedIcon : tab.icon)
+                                .font(.system(size: 17, weight: isSelected ? .bold : .semibold))
+                                .symbolRenderingMode(.monochrome)
+                                .foregroundStyle(isSelected ? Color(red: 5/255, green: 17/255, blue: 29/255) : Palette.muted)
+                                .contentTransition(.symbolEffect(.replace))
+                        }
+                        .frame(width: 44, height: 27)
+
+                        Text(tab.title)
+                            .font(.system(size: 11, weight: isSelected ? .bold : .semibold))
+                            .foregroundStyle(isSelected ? Palette.text : Palette.muted)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 8)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(tab.title)
+                .accessibilityAddTraits(isSelected ? .isSelected : [])
             }
         }
         .background(.ultraThinMaterial).background(Palette.surfaceTop.opacity(0.72))
@@ -237,5 +281,4 @@ struct DangerButtonStyle: ButtonStyle {
         configuration.label.font(.system(size: 14, weight: .heavy)).foregroundStyle(.white).frame(maxWidth: .infinity).padding(.vertical, 13).background(LinearGradient(colors: [Color(red: 248/255, green: 113/255, blue: 113/255), Palette.pink], startPoint: .topLeading, endPoint: .bottomTrailing)).clipShape(RoundedRectangle(cornerRadius: 18))
     }
 }
-
 

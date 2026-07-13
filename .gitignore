@@ -33,6 +33,9 @@ xcuserdata/
 ## Obj-C / Swift specific
 *.hmap
 
+## Local app configuration
+/client/MiaoJiConfig.xcconfig
+
 ## Playgrounds
 timeline.xctimeline
 playground.xcworkspace

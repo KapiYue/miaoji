@@ -23,15 +23,29 @@
 		};
 /* End PBXContainerItemProxy section */
 
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		FF1DECFA2FD800E800E96C25 /* Exceptions for "MiaoJiAccout" folder in "MiaoJiAccout" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = FF1DECC32FD800E600E96C25 /* MiaoJiAccout */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
 /* Begin PBXFileReference section */
 		FF1DECC42FD800E600E96C25 /* MiaoJiAccout.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = MiaoJiAccout.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		FF1DECD32FD800E800E96C25 /* MiaoJiAccoutTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = MiaoJiAccoutTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		FF1DECDD2FD800E800E96C25 /* MiaoJiAccoutUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = MiaoJiAccoutUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		FF1DECFB2FD800E800E96C25 /* MiaoJiConfig.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = MiaoJiConfig.xcconfig; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		FF1DECC62FD800E600E96C25 /* MiaoJiAccout */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				FF1DECFA2FD800E800E96C25 /* Exceptions for "MiaoJiAccout" folder in "MiaoJiAccout" target */,
+			);
 			path = MiaoJiAccout;
 			sourceTree = "<group>";
 		};
@@ -75,6 +89,7 @@
 		FF1DECBB2FD800E600E96C25 = {
 			isa = PBXGroup;
 			children = (
+				FF1DECFB2FD800E800E96C25 /* MiaoJiConfig.xcconfig */,
 				FF1DECC62FD800E600E96C25 /* MiaoJiAccout */,
 				FF1DECD62FD800E800E96C25 /* MiaoJiAccoutTests */,
 				FF1DECE02FD800E800E96C25 /* MiaoJiAccoutUITests */,
@@ -321,7 +336,7 @@
 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
-				IPHONEOS_DEPLOYMENT_TARGET = 26.5;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
 				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
@@ -378,7 +393,7 @@
 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
-				IPHONEOS_DEPLOYMENT_TARGET = 26.5;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
 				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
@@ -390,15 +405,19 @@
 		};
 		FF1DECE82FD800E800E96C25 /* Debug */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = FF1DECFB2FD800E800E96C25 /* MiaoJiConfig.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = "";
+				DEVELOPMENT_TEAM = PHQ8P8G9GY;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = MiaoJiAccout/Info.plist;
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "用于录制语音并识别记账内容。";
+				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "用于将语音转换为金额、标题和分类。";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -409,7 +428,7 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = personal.MiaoJiAccout.test;
+				PRODUCT_BUNDLE_IDENTIFIER = personal.MiaoJiAccout.test1;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
@@ -424,15 +443,19 @@
 		};
 		FF1DECE92FD800E800E96C25 /* Release */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = FF1DECFB2FD800E800E96C25 /* MiaoJiConfig.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = "";
+				DEVELOPMENT_TEAM = PHQ8P8G9GY;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = MiaoJiAccout/Info.plist;
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "用于录制语音并识别记账内容。";
+				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "用于将语音转换为金额、标题和分类。";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -443,7 +466,7 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = personal.MiaoJiAccout.test;
+				PRODUCT_BUNDLE_IDENTIFIER = personal.MiaoJiAccout.test1;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
@@ -463,7 +486,7 @@
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				GENERATE_INFOPLIST_FILE = YES;
-				IPHONEOS_DEPLOYMENT_TARGET = 26.5;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = personal.MiaoJiAccoutTests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -484,7 +507,7 @@
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				GENERATE_INFOPLIST_FILE = YES;
-				IPHONEOS_DEPLOYMENT_TARGET = 26.5;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = personal.MiaoJiAccoutTests;
 				PRODUCT_NAME = "$(TARGET_NAME)";

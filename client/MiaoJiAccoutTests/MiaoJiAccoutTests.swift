@@ -7,9 +7,24 @@
 
 import Testing
 import Foundation
+import AVFoundation
 @testable import MiaoJiAccout
 
 struct MiaoJiAccoutTests {
+
+    @Test func voiceTranscriptParsesAmountTitleAndCategory() throws {
+        let foodID = UUID()
+        let categories = [
+            ExpenseCategory(id: foodID, name: "餐饮", icon: "fork.knife", colorIndex: 0),
+            ExpenseCategory(name: "交通", icon: "tram.fill", colorIndex: 1)
+        ]
+
+        let draft = VoiceEntryParser.parse("午餐花了45.5元，餐饮", categories: categories)
+
+        #expect(draft.amount == 45.5)
+        #expect(draft.title == "午餐")
+        #expect(draft.categoryID == foodID)
+    }
 
     @Test @MainActor func csvExportContainsAllLocalData() throws {
         let suiteName = "MiaoJiAccoutTests.\(UUID().uuidString)"
@@ -44,6 +59,27 @@ struct MiaoJiAccoutTests {
         #expect(csv.contains("\"42.30\""))
         #expect(csv.contains("\"晚餐 \"\"聚会\"\"\""))
         #expect(csv.contains("\"第一行\n第二行\""))
+    }
+
+    @Test func m4aRecorderCanBePrepared() throws {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("miaoji-\(UUID().uuidString)")
+            .appendingPathExtension("m4a")
+        defer { try? FileManager.default.removeItem(at: url) }
+
+        let recorder = try AVAudioRecorder(
+            url: url,
+            settings: [
+                AVFormatIDKey: Int(kAudioFormatMPEG4AAC),
+                AVSampleRateKey: 44_100.0,
+                AVNumberOfChannelsKey: 1,
+                AVEncoderBitRateKey: 128_000,
+                AVEncoderAudioQualityKey: AVAudioQuality.high.rawValue
+            ]
+        )
+
+        #expect(recorder.prepareToRecord())
+        #expect(recorder.url.pathExtension == "m4a")
     }
 
 }

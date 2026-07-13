@@ -1,55 +1,18 @@
 import AVFoundation
 import Combine
 import Foundation
-import Speech
 
-struct VoiceEntryDraft: Equatable {
-    let amount: Double?
+struct AIParsedExpense: Decodable, Equatable, Identifiable {
+    let id = UUID()
+    let amount: Double
     let title: String
-    let categoryID: UUID?
-}
+    let categoryID: UUID
+    let categoryName: String
 
-enum VoiceEntryParser {
-    static func parse(_ transcript: String, categories: [ExpenseCategory]) -> VoiceEntryDraft {
-        let normalized = transcript
-            .replacingOccurrences(of: "，", with: " ")
-            .replacingOccurrences(of: "。", with: " ")
-            .replacingOccurrences(of: ",", with: " ")
-
-        let amountExpression = try? NSRegularExpression(
-            pattern: #"([0-9]+(?:\.[0-9]{1,2})?)\s*(?:元|块钱|块|人民币)?"#
-        )
-        let fullRange = NSRange(normalized.startIndex..., in: normalized)
-        let match = amountExpression?.firstMatch(in: normalized, range: fullRange)
-        let amount: Double? = match.flatMap { result in
-            guard let range = Range(result.range(at: 1), in: normalized) else { return nil }
-            return Double(normalized[range])
-        }
-
-        let category = categories.first {
-            normalized.localizedCaseInsensitiveContains($0.name)
-        }
-
-        var title = normalized
-        if let match, let range = Range(match.range(at: 0), in: title) {
-            title.removeSubrange(range)
-        }
-        if let category {
-            title = title.replacingOccurrences(of: category.name, with: "")
-        }
-        ["花了", "消费", "支出", "记一笔", "记账", "一笔"].forEach {
-            title = title.replacingOccurrences(of: $0, with: "")
-        }
-        title = title
-            .split(whereSeparator: { $0.isWhitespace })
-            .joined(separator: " ")
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-
-        return VoiceEntryDraft(
-            amount: amount,
-            title: title.isEmpty ? "语音记账" : title,
-            categoryID: category?.id
-        )
+    private enum CodingKeys: String, CodingKey {
+        case amount, title
+        case categoryID = "category_id"
+        case categoryName = "category_name"
     }
 }
 
@@ -58,43 +21,45 @@ final class MiaoJiInputService: ObservableObject {
     @Published private(set) var isRecording = false
     @Published private(set) var isRequestingPermission = false
     @Published private(set) var isUploading = false
-    @Published private(set) var transcript = ""
-    @Published private(set) var statusMessage = "点击“开始录音”后说出金额、用途和分类。"
+    @Published private(set) var isAnalyzing = false
+    @Published private(set) var statusMessage = "点击“开始录音”后说出一笔或多笔消费。"
     @Published private(set) var recordedFileURL: URL?
     @Published private(set) var uploadedAudioURL: URL?
+    @Published private(set) var parsedExpenses: [AIParsedExpense] = []
 
-    private let speechRecognizer = SFSpeechRecognizer(locale: Locale(identifier: "zh_CN"))
-    private var recognitionTask: SFSpeechRecognitionTask?
-    private var permissionRequestID = 0
+    private var operationID = 0
     private var audioRecorder: AVAudioRecorder?
-    private var speechRecognitionAuthorized = false
-
     private let apiBaseURL: URL?
+    private let urlSession: URLSession
 
-    var apiEndpointDescription: String {
-        apiBaseURL?.absoluteString ?? "未配置"
-    }
+    var isBusy: Bool { isRequestingPermission || isUploading || isAnalyzing }
+    var canRetry: Bool { recordedFileURL != nil && !isRecording && !isBusy }
 
     init(apiBaseURL: URL? = nil) {
-        self.apiBaseURL = apiBaseURL ?? Self.configuredAPIBaseURL
+        let resolvedAPIBaseURL = apiBaseURL ?? Self.configuredAPIBaseURL
+        self.apiBaseURL = resolvedAPIBaseURL
+        if resolvedAPIBaseURL?.isLocalDevelopmentServer == true {
+            let configuration = URLSessionConfiguration.ephemeral
+            configuration.connectionProxyDictionary = [:]
+            self.urlSession = URLSession(configuration: configuration)
+        } else {
+            self.urlSession = .shared
+        }
     }
 
     func startRecording() async {
-        guard !isRecording, !isRequestingPermission, !isUploading else { return }
+        guard !isRecording, !isBusy else { return }
 
-        permissionRequestID += 1
-        let currentRequestID = permissionRequestID
+        operationID += 1
+        let currentOperationID = operationID
         isRequestingPermission = true
         statusMessage = "正在请求录音权限…"
-        transcript = ""
+        parsedExpenses = []
         recordedFileURL = nil
         uploadedAudioURL = nil
 
-        speechRecognitionAuthorized = await requestSpeechPermission()
-        guard currentRequestID == permissionRequestID else { return }
-
         let microphoneAuthorized = await requestMicrophonePermission()
-        guard currentRequestID == permissionRequestID else { return }
+        guard currentOperationID == operationID else { return }
         guard microphoneAuthorized else {
             isRequestingPermission = false
             statusMessage = "未获得麦克风权限，请在系统设置中允许后重试。"
@@ -105,20 +70,20 @@ final class MiaoJiInputService: ObservableObject {
             try beginRecording()
             isRequestingPermission = false
             isRecording = true
-            statusMessage = "正在聆听…说完后点击“停止录音”。"
+            statusMessage = "正在聆听…可以连续说出多笔消费。"
         } catch {
-            stopAudioCapture(cancelTranscription: true)
+            stopAudioCapture()
             discardCurrentRecording()
             isRequestingPermission = false
             statusMessage = "无法开始录音：\(error.localizedDescription)"
         }
     }
 
-    func stopRecording() async {
+    func stopRecording(categories: [ExpenseCategory]) async {
         guard isRecording || isRequestingPermission else { return }
 
-        permissionRequestID += 1
-        let completionRequestID = permissionRequestID
+        operationID += 1
+        let currentOperationID = operationID
         isRequestingPermission = false
         audioRecorder?.stop()
         audioRecorder = nil
@@ -129,30 +94,33 @@ final class MiaoJiInputService: ObservableObject {
             statusMessage = "未生成录音文件，请重新录音。"
             return
         }
-
-        _ = await uploadRecording(at: recordedFileURL)
-        guard completionRequestID == permissionRequestID else { return }
-        beginTranscription(of: recordedFileURL)
+        await uploadAndAnalyze(recordedFileURL, categories: categories, operationID: currentOperationID)
     }
 
-    func retryUpload() async {
-        guard !isRecording, !isUploading, let recordedFileURL else { return }
-        _ = await uploadRecording(at: recordedFileURL)
-    }
-
-    func cancelRecording() {
-        let shouldDiscardRecording = isRecording || isRequestingPermission
-        permissionRequestID += 1
-        isRequestingPermission = false
-        stopAudioCapture(cancelTranscription: true)
-        if shouldDiscardRecording {
-            discardCurrentRecording()
+    func retry(categories: [ExpenseCategory]) async {
+        guard canRetry else { return }
+        operationID += 1
+        let currentOperationID = operationID
+        parsedExpenses = []
+        if let uploadedAudioURL {
+            await analyze(audioURL: uploadedAudioURL, categories: categories, operationID: currentOperationID)
+        } else if let recordedFileURL {
+            await uploadAndAnalyze(recordedFileURL, categories: categories, operationID: currentOperationID)
         }
     }
 
-    private func beginRecording() throws {
-        stopAudioCapture(cancelTranscription: true)
+    func cancelRecording() {
+        let shouldDiscard = isRecording || isRequestingPermission
+        operationID += 1
+        isRequestingPermission = false
+        isUploading = false
+        isAnalyzing = false
+        stopAudioCapture()
+        if shouldDiscard { discardCurrentRecording() }
+    }
 
+    private func beginRecording() throws {
+        stopAudioCapture()
         let session = AVAudioSession.sharedInstance()
         try session.setCategory(.record, mode: .measurement, options: .duckOthers)
         try session.setActive(true, options: .notifyOthersOnDeactivation)
@@ -175,68 +143,25 @@ final class MiaoJiInputService: ObservableObject {
         audioRecorder = recorder
     }
 
-    private func beginTranscription(of fileURL: URL) {
-        guard speechRecognitionAuthorized, speechRecognizer?.isAvailable == true else {
-            statusMessage = uploadedAudioURL == nil
-                ? "录音已保存但上传失败；语音识别当前不可用。"
-                : "录音已上传；语音识别当前不可用。"
-            return
-        }
-
-        recognitionTask?.cancel()
-        let request = SFSpeechURLRecognitionRequest(url: fileURL)
-        request.taskHint = .dictation
-        request.shouldReportPartialResults = true
-        statusMessage = uploadedAudioURL == nil
-            ? "录音上传失败，正在识别录音内容…"
-            : "录音已上传，正在识别录音内容…"
-
-        recognitionTask = speechRecognizer?.recognitionTask(with: request) { [weak self] result, error in
-            Task { @MainActor in
-                guard let self else { return }
-                if let result {
-                    self.transcript = result.bestTranscription.formattedString
-                    if result.isFinal {
-                        self.recognitionTask = nil
-                        self.statusMessage = self.uploadedAudioURL == nil
-                            ? "识别完成；录音尚未上传，可点击重新上传。"
-                            : "录音已上传，可填写识别结果。"
-                    }
-                } else if let error {
-                    self.recognitionTask = nil
-                    self.statusMessage = self.uploadedAudioURL == nil
-                        ? "录音已保存但上传失败，且识别失败：\(error.localizedDescription)"
-                        : "录音已上传，但识别失败：\(error.localizedDescription)"
-                }
-            }
-        }
-    }
-
-    private func stopAudioCapture(cancelTranscription: Bool) {
-        if audioRecorder?.isRecording == true {
-            audioRecorder?.stop()
-        }
+    private func stopAudioCapture() {
+        if audioRecorder?.isRecording == true { audioRecorder?.stop() }
         audioRecorder = nil
-        if cancelTranscription {
-            recognitionTask?.cancel()
-        }
-        recognitionTask = nil
         isRecording = false
         try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
     }
 
-    @discardableResult
-    private func uploadRecording(at fileURL: URL) async -> Bool {
-        guard !isUploading else { return false }
+    private func uploadAndAnalyze(_ fileURL: URL, categories: [ExpenseCategory], operationID: Int) async {
         guard let apiBaseURL else {
-            statusMessage = "录音已保存，但未配置 MIAOJI_API_BASE_URL，无法上传。"
-            return false
+            statusMessage = "未配置服务端地址，无法上传录音。"
+            return
+        }
+        guard !categories.isEmpty else {
+            statusMessage = "暂无可用分类，请先在设置中添加分类。"
+            return
         }
 
         isUploading = true
-        statusMessage = "录音已保存，正在上传…"
-        defer { isUploading = false }
-
+        statusMessage = "录音完成，正在安全上传…"
         do {
             let fileData = try await Task.detached(priority: .utility) {
                 try Data(contentsOf: fileURL, options: .mappedIfSafe)
@@ -248,53 +173,72 @@ final class MiaoJiInputService: ObservableObject {
             request.httpMethod = "POST"
             request.timeoutInterval = 60
             request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
-            request.httpBody = Self.multipartBody(
-                fileData: fileData,
-                filename: fileURL.lastPathComponent,
-                boundary: boundary
-            )
+            request.httpBody = Self.multipartBody(fileData: fileData, filename: fileURL.lastPathComponent, boundary: boundary)
 
-            let (data, response) = try await URLSession.shared.data(for: request)
-            guard let httpResponse = response as? HTTPURLResponse else {
-                throw MiaoJiInputError.invalidServerResponse
-            }
+            let (data, response) = try await urlSession.data(for: request)
+            guard operationID == self.operationID else { return }
+            guard let httpResponse = response as? HTTPURLResponse else { throw MiaoJiInputError.invalidServerResponse }
             guard 200..<300 ~= httpResponse.statusCode else {
-                let message = (try? JSONDecoder().decode(APIErrorResponse.self, from: data).error)
-                    ?? HTTPURLResponse.localizedString(forStatusCode: httpResponse.statusCode)
-                throw MiaoJiInputError.uploadRejected(message)
+                throw MiaoJiInputError.requestRejected(Self.serverMessage(data, statusCode: httpResponse.statusCode))
             }
 
             let result = try JSONDecoder().decode(AudioUploadResponse.self, from: data)
             uploadedAudioURL = result.url
-            statusMessage = transcript.isEmpty
-                ? "录音已上传，但没有识别到文字，请靠近麦克风后重试。"
-                : "录音已上传，可填写识别结果。"
-            return true
+            isUploading = false
+            await analyze(audioURL: result.url, categories: categories, operationID: operationID)
         } catch {
-            statusMessage = "上传到 \(apiEndpointDescription) 失败：\(error.localizedDescription)"
-            return false
+            guard operationID == self.operationID else { return }
+            isUploading = false
+            statusMessage = Self.failureMessage(for: error, action: "上传", apiBaseURL: apiBaseURL)
+        }
+    }
+
+    private func analyze(audioURL: URL, categories: [ExpenseCategory], operationID: Int) async {
+        guard let apiBaseURL else { return }
+        isAnalyzing = true
+        statusMessage = "AI 正在理解语音并拆分记账明细…"
+        do {
+            let body = ParseAudioRequest(
+                audioURL: audioURL.absoluteString,
+                categories: categories.map { .init(id: $0.id.uuidString, name: $0.name) }
+            )
+            var request = URLRequest(url: apiBaseURL.appendingPathComponent("parse-audio-expenses"))
+            request.httpMethod = "POST"
+            request.timeoutInterval = 120
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            request.httpBody = try JSONEncoder().encode(body)
+
+            let (data, response) = try await urlSession.data(for: request)
+            guard operationID == self.operationID else { return }
+            guard let httpResponse = response as? HTTPURLResponse else { throw MiaoJiInputError.invalidServerResponse }
+            guard 200..<300 ~= httpResponse.statusCode else {
+                throw MiaoJiInputError.requestRejected(Self.serverMessage(data, statusCode: httpResponse.statusCode))
+            }
+            let result = try JSONDecoder().decode([AIParsedExpense].self, from: data)
+            parsedExpenses = result
+            isAnalyzing = false
+            statusMessage = result.isEmpty
+                ? "没有识别到明确的记账明细，请重试并说清金额和用途。"
+                : "AI 已识别 \(result.count) 笔明细，请核对后统一保存。"
+        } catch {
+            guard operationID == self.operationID else { return }
+            isAnalyzing = false
+            statusMessage = Self.failureMessage(for: error, action: "AI 解析", apiBaseURL: apiBaseURL)
         }
     }
 
     private func makeRecordingURL() throws -> URL {
-        let recordingsDirectory = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        let directory = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
             .appending(path: "Recordings", directoryHint: .isDirectory)
-        try FileManager.default.createDirectory(
-            at: recordingsDirectory,
-            withIntermediateDirectories: true
-        )
-        return recordingsDirectory
-            .appending(path: "recording-\(UUID().uuidString.lowercased())")
-            .appendingPathExtension("m4a")
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        return directory.appending(path: "recording-\(UUID().uuidString.lowercased())").appendingPathExtension("m4a")
     }
 
     private func discardCurrentRecording() {
-        audioRecorder = nil
-        if let recordedFileURL {
-            try? FileManager.default.removeItem(at: recordedFileURL)
-        }
+        if let recordedFileURL { try? FileManager.default.removeItem(at: recordedFileURL) }
         recordedFileURL = nil
         uploadedAudioURL = nil
+        parsedExpenses = []
     }
 
     private static func multipartBody(fileData: Data, filename: String, boundary: String) -> Data {
@@ -307,57 +251,75 @@ final class MiaoJiInputService: ObservableObject {
         return body
     }
 
-    private static var configuredAPIBaseURL: URL? {
-        let configuredValue = ProcessInfo.processInfo.environment["MIAOJI_API_BASE_URL"]
-            ?? Bundle.main.object(forInfoDictionaryKey: "MIAOJI_API_BASE_URL") as? String
-        if let configuredValue,
-           let url = URL(string: configuredValue.trimmingCharacters(in: .whitespacesAndNewlines)) {
-            return url
-        }
-        return URL(string: "http://127.0.0.1:8000")
+    private static func serverMessage(_ data: Data, statusCode: Int) -> String {
+        (try? JSONDecoder().decode(APIErrorResponse.self, from: data).error)
+            ?? HTTPURLResponse.localizedString(forStatusCode: statusCode)
     }
 
-    private func requestSpeechPermission() async -> Bool {
-        await withCheckedContinuation { continuation in
-            SFSpeechRecognizer.requestAuthorization { status in
-                continuation.resume(returning: status == .authorized)
-            }
+    private static func failureMessage(for error: Error, action: String, apiBaseURL: URL?) -> String {
+        if let urlError = error as? URLError,
+           [.cannotConnectToHost, .cannotFindHost, .networkConnectionLost, .notConnectedToInternet].contains(urlError.code) {
+            let endpoint = apiBaseURL?.absoluteString ?? "服务端地址"
+            return "无法连接记账服务（\(endpoint)）。请确认后端已启动，并检查网络后重试。"
         }
+        return "\(action)失败：\(error.localizedDescription)"
+    }
+
+    private static var configuredAPIBaseURL: URL? {
+        if let value = ProcessInfo.processInfo.environment["MIAOJI_API_BASE_URL"],
+           let url = URL(string: value.trimmingCharacters(in: .whitespacesAndNewlines)) {
+            return url
+        }
+#if targetEnvironment(simulator)
+        return URL(string: "http://127.0.0.1:8000")
+#else
+        if let value = Bundle.main.object(forInfoDictionaryKey: "MIAOJI_API_BASE_URL") as? String,
+           let url = URL(string: value.trimmingCharacters(in: .whitespacesAndNewlines)) {
+            return url
+        }
+        return nil
+#endif
     }
 
     private func requestMicrophonePermission() async -> Bool {
         await withCheckedContinuation { continuation in
-            AVAudioApplication.requestRecordPermission { allowed in
-                continuation.resume(returning: allowed)
-            }
+            AVAudioApplication.requestRecordPermission { continuation.resume(returning: $0) }
         }
     }
 }
 
-private struct AudioUploadResponse: Decodable {
-    let url: URL
+private extension URL {
+    var isLocalDevelopmentServer: Bool {
+        guard scheme?.lowercased() == "http", let host = host?.lowercased() else { return false }
+        return host == "localhost"
+            || host == "127.0.0.1"
+            || host.hasPrefix("192.168.")
+            || host.hasPrefix("10.")
+            || host.range(of: #"^172\.(1[6-9]|2[0-9]|3[01])\."#, options: .regularExpression) != nil
+    }
 }
 
-private struct APIErrorResponse: Decodable {
-    let error: String
+private struct AudioUploadResponse: Decodable { let url: URL }
+private struct APIErrorResponse: Decodable { let error: String }
+
+private struct ParseAudioRequest: Encodable {
+    let audioURL: String
+    let categories: [Category]
+
+    struct Category: Encodable { let id: String; let name: String }
+    enum CodingKeys: String, CodingKey { case audioURL = "audio_url", categories }
 }
 
 private enum MiaoJiInputError: LocalizedError {
-    case audioInputUnavailable
-    case emptyRecording
-    case invalidServerResponse
-    case uploadRejected(String)
+    case audioInputUnavailable, emptyRecording, invalidServerResponse
+    case requestRejected(String)
 
     var errorDescription: String? {
         switch self {
-        case .audioInputUnavailable:
-            "未检测到可用的音频输入设备"
-        case .emptyRecording:
-            "录音文件为空"
-        case .invalidServerResponse:
-            "服务器响应无效"
-        case .uploadRejected(let message):
-            message
+        case .audioInputUnavailable: "未检测到可用的音频输入设备"
+        case .emptyRecording: "录音文件为空"
+        case .invalidServerResponse: "服务器响应无效"
+        case .requestRejected(let message): message
         }
     }
 }

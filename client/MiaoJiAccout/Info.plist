@@ -4,6 +4,10 @@
 <dict>
 	<key>MIAOJI_API_BASE_URL</key>
 	<string>$(MIAOJI_API_BASE_URL)</string>
+	<key>SUPABASE_URL</key>
+	<string>$(SUPABASE_URL)</string>
+	<key>SUPABASE_PUBLISHABLE_KEY</key>
+	<string>$(SUPABASE_PUBLISHABLE_KEY)</string>
 	<key>NSAppTransportSecurity</key>
 	<dict>
 		<key>NSAllowsLocalNetworking</key>

@@ -1,10 +1,14 @@
 import os
 import unittest
 from io import BytesIO
+from types import SimpleNamespace
+from unittest.mock import Mock, patch
+from urllib.parse import urlparse
 
 
 os.environ.setdefault("SUPABASE_URL", "https://example.supabase.co")
 os.environ.setdefault("SUPABASE_SERVICE_ROLE_KEY", "test-service-role-key")
+os.environ.setdefault("DASHSCOPE_API_KEY", "test-dashscope-key")
 
 from server import app as app_module
 
@@ -79,6 +83,75 @@ class UploadAudioTests(unittest.TestCase):
             "audio/mp4",
         )
         self.assertTrue(payload["url"].endswith(payload["path"]))
+
+
+class ParseAudioExpensesTests(unittest.TestCase):
+    def setUp(self):
+        self.client = app_module.app.test_client()
+        host = urlparse(app_module.supabase_url).hostname
+        self.audio_url = f"https://{host}/storage/v1/object/public/user-audio/2026/07/13/test.m4a"
+        self.categories = [
+            {"id": "category-food", "name": "餐饮"},
+            {"id": "category-travel", "name": "交通"},
+        ]
+
+    def test_requires_uploaded_audio_url(self):
+        response = self.client.post(
+            "/parse-audio-expenses",
+            json={"audio_url": "https://attacker.example/audio.m4a", "categories": self.categories},
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("audio_url", response.get_json()["error"])
+
+    def test_requires_categories(self):
+        response = self.client.post(
+            "/parse-audio-expenses",
+            json={"audio_url": self.audio_url, "categories": []},
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("categories", response.get_json()["error"])
+
+    def test_returns_multiple_normalized_expenses(self):
+        ai_text = (
+            '```json\n['
+            '{"amount":45,"title":"午餐","category_id":"category-food","category_name":"餐饮"},'
+            '{"amount":28,"title":"打车","category_id":"category-travel","category_name":"交通"}'
+            ']\n```'
+        )
+        chunks = [
+            SimpleNamespace(
+                choices=[SimpleNamespace(delta=SimpleNamespace(content=ai_text))]
+            )
+        ]
+        create = Mock(return_value=chunks)
+        fake_openai = Mock(
+            return_value=SimpleNamespace(
+                chat=SimpleNamespace(completions=SimpleNamespace(create=create))
+            )
+        )
+
+        with patch.object(app_module, "OpenAI", fake_openai):
+            response = self.client.post(
+                "/parse-audio-expenses",
+                json={"audio_url": self.audio_url, "categories": self.categories},
+            )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertEqual(len(payload), 2)
+        self.assertEqual(payload[0]["amount"], 45.0)
+        self.assertEqual(payload[1]["category_id"], "category-travel")
+        call = create.call_args.kwargs
+        self.assertTrue(call["stream"])
+        self.assertEqual(call["modalities"], ["text"])
+        self.assertEqual(call["messages"][0]["content"][0]["input_audio"]["data"], self.audio_url)
+
+    def test_rejects_category_not_supplied_by_client(self):
+        invalid = '[{"amount":10,"title":"电影","category_id":"unknown","category_name":"娱乐"}]'
+        with self.assertRaises(ValueError):
+            app_module._normalize_ai_entries(invalid, self.categories)
 
 
 if __name__ == "__main__":

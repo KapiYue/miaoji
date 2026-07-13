@@ -23,6 +23,13 @@
 		};
 /* End PBXContainerItemProxy section */
 
+/* Begin PBXFileReference section */
+		FF1DECC42FD800E600E96C25 /* MiaoJiAccout.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = MiaoJiAccout.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		FF1DECD32FD800E800E96C25 /* MiaoJiAccoutTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = MiaoJiAccoutTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		FF1DECDD2FD800E800E96C25 /* MiaoJiAccoutUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = MiaoJiAccoutUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		FF1DECFB2FD800E800E96C25 /* MiaoJiConfig.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = MiaoJiConfig.xcconfig; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
 		FF1DECFA2FD800E800E96C25 /* Exceptions for "MiaoJiAccout" folder in "MiaoJiAccout" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
@@ -32,13 +39,6 @@
 			target = FF1DECC32FD800E600E96C25 /* MiaoJiAccout */;
 		};
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
-
-/* Begin PBXFileReference section */
-		FF1DECC42FD800E600E96C25 /* MiaoJiAccout.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = MiaoJiAccout.app; sourceTree = BUILT_PRODUCTS_DIR; };
-		FF1DECD32FD800E800E96C25 /* MiaoJiAccoutTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = MiaoJiAccoutTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
-		FF1DECDD2FD800E800E96C25 /* MiaoJiAccoutUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = MiaoJiAccoutUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
-		FF1DECFB2FD800E800E96C25 /* MiaoJiConfig.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = MiaoJiConfig.xcconfig; sourceTree = "<group>"; };
-/* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		FF1DECC62FD800E600E96C25 /* MiaoJiAccout */ = {
@@ -417,7 +417,6 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = MiaoJiAccout/Info.plist;
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "用于录制语音并识别记账内容。";
-				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "用于将语音转换为金额、标题和分类。";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -455,7 +454,6 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = MiaoJiAccout/Info.plist;
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "用于录制语音并识别记账内容。";
-				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "用于将语音转换为金额、标题和分类。";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;

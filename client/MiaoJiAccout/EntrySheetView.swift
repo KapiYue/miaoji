@@ -44,7 +44,8 @@ struct EntrySheetView: View {
     @State private var date: Date
     @State private var recordType: RecordType
     @State private var showsDateEditor = false
-    @State private var showsVoiceForm = false
+    @State private var voiceDrafts: [VoiceExpenseDraft] = []
+    @State private var showsCategoryManager = false
     @FocusState private var focusedField: EntryField?
 
     private enum EntryField: Hashable { case amount, title, note }
@@ -58,6 +59,10 @@ struct EntrySheetView: View {
     }
     private var isVoice: Bool { if case .voice = type { true } else { false } }
     private var editingRecord: ExpenseRecord? { if case .edit(let record) = type { record } else { nil } }
+    private var sheetTitle: String {
+        if isVoice { return "语音记账" }
+        return editingRecord == nil ? "添加\(recordType.rawValue)" : "编辑\(recordType.rawValue)"
+    }
     var body: some View {
         GeometryReader { proxy in
             ZStack {
@@ -70,10 +75,10 @@ struct EntrySheetView: View {
                     VStack(spacing: 16) {
                 HStack(alignment: .top) {
                     VStack(alignment: .leading, spacing: 4) {
-                        Text(isVoice ? "语音输入" : editingRecord == nil ? "添加支出" : "编辑支出").font(.title3.bold())
+                        Text(sheetTitle).font(.title3.bold())
                         Text(
                             isVoice
-                                ? "点击开始录音，说完后停止；真机与 Simulator 都会上传音频。"
+                                ? "说出金额和用途，AI 会自动识别并整理记账明细。"
                                 : "保留完整金额、分类、时间和备注字段。"
                         )
                         .font(.caption)
@@ -81,48 +86,37 @@ struct EntrySheetView: View {
                     }
                     Spacer(); Button("关闭") { voiceInput.cancelRecording(); dismiss() }.buttonStyle(SoftButtonStyle())
                 }
-                if isVoice && !showsVoiceForm {
+                if isVoice && voiceDrafts.isEmpty {
                     GlassCard {
                         VStack(spacing: 16) {
-                            Badge(text: voiceInput.isRecording ? "录" : "语", color: voiceInput.isRecording ? .pink : .cyan, size: 84)
-                                .scaleEffect(voiceInput.isRecording ? 1.08 : 1)
-                                .animation(
-                                    voiceInput.isRecording
-                                        ? .easeInOut(duration: 0.7).repeatForever(autoreverses: true)
-                                        : .default,
-                                    value: voiceInput.isRecording
-                                )
+                            if voiceInput.isUploading || voiceInput.isAnalyzing {
+                                AIParsingAnimation()
+                            } else {
+                                Badge(text: voiceInput.isRecording ? "录" : "语", color: voiceInput.isRecording ? .pink : .cyan, size: 84)
+                                    .scaleEffect(voiceInput.isRecording ? 1.08 : 1)
+                                    .animation(
+                                        voiceInput.isRecording
+                                            ? .easeInOut(duration: 0.7).repeatForever(autoreverses: true)
+                                            : .default,
+                                        value: voiceInput.isRecording
+                                    )
+                            }
                             Text(voiceInput.statusMessage)
                                 .font(.caption)
-                                .foregroundStyle(voiceInput.isRecording ? Palette.pink : Palette.muted)
+                                .foregroundStyle(voiceInput.isRecording ? Palette.pink : voiceInput.isAnalyzing ? Palette.primary : Palette.muted)
                                 .multilineTextAlignment(.center)
-                            Text(voiceInput.transcript.isEmpty ? "识别示例：午餐 45 元，餐饮" : voiceInput.transcript)
-                                .font(voiceInput.transcript.isEmpty ? .caption : .body.weight(.semibold))
-                                .foregroundStyle(voiceInput.transcript.isEmpty ? Palette.muted : Palette.text)
+                            Text("示例：午餐 45 元，打车 28 元，买水果 16.5 元")
+                                .font(.caption)
+                                .foregroundStyle(Palette.muted)
                                 .multilineTextAlignment(.center)
                                 .frame(maxWidth: .infinity, minHeight: 44)
-                            Text("上传接口：\(voiceInput.apiEndpointDescription)")
-                                .font(.caption2)
-                                .foregroundStyle(Palette.muted)
-                                .textSelection(.enabled)
-                            if let uploadedAudioURL = voiceInput.uploadedAudioURL {
-                                VStack(spacing: 5) {
-                                    Link("查看已上传录音", destination: uploadedAudioURL)
-                                        .font(.caption.weight(.semibold))
-                                    Text(uploadedAudioURL.absoluteString)
-                                        .font(.caption2)
-                                        .foregroundStyle(Palette.muted)
-                                        .textSelection(.enabled)
-                                        .multilineTextAlignment(.center)
-                                }
-                            }
                         }
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 20)
                     }
                     Button {
                         if voiceInput.isRecording {
-                            Task { await voiceInput.stopRecording() }
+                            Task { await voiceInput.stopRecording(categories: store.categories) }
                         } else {
                             Task { await voiceInput.startRecording() }
                         }
@@ -130,87 +124,54 @@ struct EntrySheetView: View {
                         Label(
                             voiceInput.isUploading
                                 ? "正在上传"
+                                : voiceInput.isAnalyzing ? "AI 解析中"
                                 : voiceInput.isRecording ? "停止录音" : "开始录音",
                             systemImage: voiceInput.isUploading
                                 ? "arrow.up.circle.fill"
+                                : voiceInput.isAnalyzing ? "sparkles"
                                 : voiceInput.isRecording ? "stop.fill" : "mic.fill"
                         )
                     }
                     .buttonStyle(GradientButtonStyle())
-                    .disabled(voiceInput.isRequestingPermission || voiceInput.isUploading)
-                    .opacity(voiceInput.isRequestingPermission || voiceInput.isUploading ? 0.6 : 1)
+                    .disabled(voiceInput.isBusy)
+                    .opacity(voiceInput.isBusy ? 0.6 : 1)
 
-                    if voiceInput.recordedFileURL != nil,
-                       voiceInput.uploadedAudioURL == nil,
-                       !voiceInput.isRecording,
-                       !voiceInput.isUploading {
-                        Button("重新上传录音") {
-                            Task { await voiceInput.retryUpload() }
+                    if voiceInput.canRetry {
+                        Button(voiceInput.uploadedAudioURL == nil ? "重新上传并解析" : "重新进行 AI 解析") {
+                            Task { await voiceInput.retry(categories: store.categories) }
                         }
                         .buttonStyle(SoftButtonStyle(fullWidth: true))
                     }
-
-                    if !voiceInput.transcript.isEmpty, !voiceInput.isRecording {
-                        Button("填写识别结果") {
-                            applyVoiceTranscript()
-                            showsVoiceForm = true
+                } else if isVoice {
+                    VoiceDraftEditor(
+                        drafts: $voiceDrafts,
+                        onManageCategories: { showsCategoryManager = true }
+                    )
+                    HStack(spacing: 12) {
+                        Button("重新录音") {
+                            voiceDrafts = []
+                            Task { await voiceInput.startRecording() }
                         }
                         .buttonStyle(SoftButtonStyle(fullWidth: true))
+                        Button("统一保存", action: saveVoiceDrafts)
+                            .buttonStyle(GradientButtonStyle())
+                            .disabled(!canSaveVoiceDrafts)
+                            .opacity(canSaveVoiceDrafts ? 1 : 0.55)
                     }
                 } else {
-                    if isVoice {
-                        HStack {
-                            VStack(alignment: .leading, spacing: 3) {
-                                Text("请核对识别结果").font(.system(size: 14, weight: .bold))
-                                Text("金额、标题或分类不准确时可直接修改。").font(.caption).foregroundStyle(Palette.muted)
-                            }
-                            Spacer()
-                            Button("重新录音") { showsVoiceForm = false }.buttonStyle(SoftButtonStyle())
-                        }
-                        .softRow()
+                    Picker("类型", selection: $recordType) {
+                        ForEach(RecordType.allCases, id: \.self) { Text($0.rawValue).tag($0) }
                     }
-                    if editingRecord != nil {
-                        Picker("类型", selection: $recordType) { ForEach(RecordType.allCases, id: \.self) { Text($0.rawValue).tag($0) } }.pickerStyle(.segmented)
-                    }
+                    .pickerStyle(.segmented)
                     DarkField(label: "金额", placeholder: "0.00", text: $amount, keyboard: .decimalPad)
                         .focused($focusedField, equals: .amount)
-                    DarkField(label: "标题", placeholder: "例如：午餐 / 咖啡 / 打车", text: $title)
+                    DarkField(
+                        label: "标题",
+                        placeholder: recordType == .expense ? "例如：午餐 / 咖啡 / 打车" : "例如：工资 / 奖金 / 退款",
+                        text: $title
+                    )
                         .focused($focusedField, equals: .title)
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("分类").font(.caption).foregroundStyle(Palette.muted)
-                        Menu {
-                            ForEach(store.categories) { category in
-                                Button {
-                                    categoryID = category.id
-                                } label: {
-                                    if categoryID == category.id {
-                                        Label(category.name, systemImage: "checkmark")
-                                    } else {
-                                        Text(category.name)
-                                    }
-                                }
-                            }
-                        } label: {
-                            HStack(spacing: 10) {
-                                Text(categoryID.flatMap { store.category(for: $0)?.name } ?? "请选择分类")
-                                    .foregroundStyle(categoryID == nil ? Palette.muted : Palette.text)
-                                Spacer(minLength: 8)
-                                Image(systemName: "chevron.up.chevron.down")
-                                    .font(.system(size: 12, weight: .semibold))
-                                    .foregroundStyle(Palette.muted)
-                            }
-                            .contentShape(Rectangle())
-                        }
-                        .buttonStyle(.plain)
-                        .padding(.horizontal, 13).frame(maxWidth: .infinity).frame(height: 48)
-                        .background(Palette.soft).clipShape(RoundedRectangle(cornerRadius: 18))
-                        .overlay(RoundedRectangle(cornerRadius: 18).stroke(Palette.line))
-                        if categoryID == nil {
-                            Text(store.categories.isEmpty ? "请先在设置中添加支出分类" : "请选择一个分类")
-                                .font(.caption2)
-                                .foregroundStyle(Palette.accent)
-                        }
-                    }
+                    CategoryGridPicker(selection: $categoryID)
                     VStack(alignment: .leading, spacing: 8) {
                         Text("时间").font(.caption).foregroundStyle(Palette.muted)
                         Button { showsDateEditor = true } label: {
@@ -253,7 +214,20 @@ struct EntrySheetView: View {
             }
         }
         .onDisappear { voiceInput.cancelRecording() }
+        .onChange(of: voiceInput.parsedExpenses) { _, expenses in
+            guard !expenses.isEmpty else { return }
+            let now = Date.now
+            voiceDrafts = expenses.map {
+                VoiceExpenseDraft(
+                    amount: $0.amount.formatted(.number.precision(.fractionLength(0...2))),
+                    title: $0.title,
+                    categoryID: $0.categoryID,
+                    date: now
+                )
+            }
+        }
         .sheet(isPresented: $showsDateEditor) { DateTimeEditor(date: $date) }
+        .sheet(isPresented: $showsCategoryManager) { CategoryManagementView() }
     }
 
     private static let dateTimeFormatter: DateFormatter = {
@@ -265,17 +239,33 @@ struct EntrySheetView: View {
 
     private var canSave: Bool {
         guard let value = Double(amount), value > 0 else { return false }
-        return !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && categoryID != nil
+        guard let categoryID, store.category(for: categoryID) != nil else { return false }
+        return !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
-    private func applyVoiceTranscript() {
-        let draft = VoiceEntryParser.parse(voiceInput.transcript, categories: store.categories)
-        if let recognizedAmount = draft.amount {
-            amount = recognizedAmount.formatted(.number.precision(.fractionLength(0...2)))
+    private var canSaveVoiceDrafts: Bool {
+        !voiceDrafts.isEmpty && voiceDrafts.allSatisfy {
+            guard let value = Double($0.amount), value > 0 else { return false }
+            guard let categoryID = $0.categoryID, store.category(for: categoryID) != nil else { return false }
+            return !$0.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         }
-        title = draft.title
-        categoryID = draft.categoryID ?? categoryID ?? store.categories.first?.id
-        note = "语音识别：\(voiceInput.transcript)"
+    }
+
+    private func saveVoiceDrafts() {
+        guard canSaveVoiceDrafts else { return }
+        let records = voiceDrafts.compactMap { draft -> ExpenseRecord? in
+            guard let amount = Double(draft.amount), let categoryID = draft.categoryID else { return nil }
+            return ExpenseRecord(
+                amount: amount,
+                title: draft.title.trimmingCharacters(in: .whitespacesAndNewlines),
+                note: "AI 语音解析",
+                categoryID: categoryID,
+                date: draft.date,
+                type: .expense
+            )
+        }
+        store.records.append(contentsOf: records)
+        dismiss()
     }
 
     private func save() {
@@ -283,9 +273,217 @@ struct EntrySheetView: View {
         if let editingRecord, let index = store.records.firstIndex(where: { $0.id == editingRecord.id }) {
             store.records[index] = ExpenseRecord(id: editingRecord.id, amount: value, title: title, note: note, categoryID: categoryID, date: date, type: recordType)
         } else {
-            store.records.append(ExpenseRecord(amount: value, title: title, note: note, categoryID: categoryID, date: date, type: .expense))
+            store.records.append(ExpenseRecord(amount: value, title: title, note: note, categoryID: categoryID, date: date, type: recordType))
         }
         dismiss()
+    }
+}
+
+struct VoiceExpenseDraft: Identifiable, Equatable {
+    let id = UUID()
+    var amount: String
+    var title: String
+    var categoryID: UUID?
+    var date: Date
+}
+
+struct AIParsingAnimation: View {
+    @State private var spins = false
+    @State private var pulses = false
+
+    var body: some View {
+        ZStack {
+            Circle()
+                .fill(LinearGradient(colors: [Palette.primary.opacity(0.22), Palette.pink.opacity(0.14)], startPoint: .topLeading, endPoint: .bottomTrailing))
+                .frame(width: 92, height: 92)
+                .scaleEffect(pulses ? 1.08 : 0.9)
+            Circle()
+                .trim(from: 0.08, to: 0.78)
+                .stroke(
+                    AngularGradient(colors: [Palette.primary, Palette.accent, Palette.pink, Palette.primary], center: .center),
+                    style: StrokeStyle(lineWidth: 5, lineCap: .round)
+                )
+                .frame(width: 86, height: 86)
+                .rotationEffect(.degrees(spins ? 360 : 0))
+            Image(systemName: "sparkles")
+                .font(.system(size: 30, weight: .semibold))
+                .foregroundStyle(LinearGradient(colors: [Palette.primary, Palette.accent], startPoint: .topLeading, endPoint: .bottomTrailing))
+        }
+        .frame(height: 100)
+        .onAppear {
+            withAnimation(.linear(duration: 1.5).repeatForever(autoreverses: false)) { spins = true }
+            withAnimation(.easeInOut(duration: 0.8).repeatForever(autoreverses: true)) { pulses = true }
+        }
+        .accessibilityLabel("AI 正在解析")
+    }
+}
+
+struct CategoryGridPicker: View {
+    @EnvironmentObject private var store: AppStore
+    @Binding var selection: UUID?
+    private let columns = Array(repeating: GridItem(.flexible(), spacing: 10), count: 3)
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("分类").font(.caption).foregroundStyle(Palette.muted)
+            if store.categories.isEmpty {
+                Text("暂无分类，请先在设置中添加分类。")
+                    .font(.caption)
+                    .foregroundStyle(Palette.muted)
+                    .softRow()
+            } else {
+                LazyVGrid(columns: columns, spacing: 14) {
+                    ForEach(store.categories) { category in
+                        let selected = selection == category.id
+                        Button { selection = category.id } label: {
+                            VStack(spacing: 7) {
+                                ZStack(alignment: .topTrailing) {
+                                    Circle()
+                                        .fill(LinearGradient(colors: BadgeColor.from(category.colorIndex).colors.map { $0.opacity(selected ? 0.95 : 0.2) }, startPoint: .topLeading, endPoint: .bottomTrailing))
+                                        .frame(width: 48, height: 48)
+                                    Image(systemName: category.icon)
+                                        .font(.system(size: 19, weight: .semibold))
+                                        .foregroundStyle(selected ? .white : BadgeColor.from(category.colorIndex).colors[0])
+                                        .frame(width: 48, height: 48)
+                                    if selected {
+                                        Image(systemName: "checkmark.circle.fill")
+                                            .font(.system(size: 15))
+                                            .foregroundStyle(.white, Palette.success)
+                                            .offset(x: 4, y: -3)
+                                    }
+                                }
+                                Text(category.name)
+                                    .font(.system(size: 12, weight: selected ? .bold : .medium))
+                                    .foregroundStyle(Palette.text)
+                                    .lineLimit(1)
+                            }
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 10)
+                            .background(selected ? Palette.primary.opacity(0.1) : Color.clear)
+                            .clipShape(RoundedRectangle(cornerRadius: 18))
+                            .overlay(RoundedRectangle(cornerRadius: 18).stroke(selected ? Palette.primary.opacity(0.6) : Color.clear, lineWidth: 1.5))
+                            .scaleEffect(selected ? 1 : 0.97)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            }
+        }
+    }
+}
+
+struct VoiceDraftEditor: View {
+    @EnvironmentObject private var store: AppStore
+    @Binding var drafts: [VoiceExpenseDraft]
+    let onManageCategories: () -> Void
+
+    var body: some View {
+        VStack(spacing: 14) {
+            HStack {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("AI 已拆分 \(drafts.count) 笔明细").font(.system(size: 15, weight: .bold))
+                    Text("逐条核对金额、标题、分类和时间后统一保存。").font(.caption).foregroundStyle(Palette.muted)
+                }
+                Spacer()
+                Image(systemName: "checkmark.seal.fill").foregroundStyle(Palette.success)
+            }
+            .softRow()
+
+            ForEach($drafts) { $draft in
+                GlassCard(padding: 14) {
+                    VStack(spacing: 13) {
+                        HStack {
+                            Label("第 \((drafts.firstIndex(where: { $0.id == draft.id }) ?? 0) + 1) 笔", systemImage: "sparkles")
+                                .font(.system(size: 13, weight: .bold))
+                                .foregroundStyle(Palette.primary)
+                            Spacer()
+                            if drafts.count > 1 {
+                                Button(role: .destructive) {
+                                    drafts.removeAll { $0.id == draft.id }
+                                } label: { Image(systemName: "trash") }
+                                .buttonStyle(.plain)
+                            }
+                        }
+                        HStack(spacing: 10) {
+                            DarkField(label: "金额", placeholder: "0.00", text: $draft.amount, keyboard: .decimalPad)
+                                .frame(width: 116)
+                            DarkField(label: "标题", placeholder: "消费标题", text: $draft.title)
+                        }
+                        CategoryStripPicker(selection: $draft.categoryID, onManage: onManageCategories)
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("时间").font(.caption).foregroundStyle(Palette.muted)
+                            DatePicker("", selection: $draft.date, displayedComponents: [.date, .hourAndMinute])
+                                .labelsHidden()
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+struct CategoryStripPicker: View {
+    @EnvironmentObject private var store: AppStore
+    @Binding var selection: UUID?
+    let onManage: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text("分类").font(.caption).foregroundStyle(Palette.muted)
+                Spacer()
+                Button("管理", action: onManage).font(.caption.weight(.semibold)).buttonStyle(.plain).foregroundStyle(Palette.primary)
+            }
+            GeometryReader { proxy in
+                ScrollViewReader { scrollProxy in
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 8) {
+                            Color.clear
+                                .frame(width: max((proxy.size.width / 2) - 8, 0), height: 1)
+                            ForEach(store.categories) { category in
+                                let selected = selection == category.id
+                                Button {
+                                    selection = category.id
+                                } label: {
+                                    Label(category.name, systemImage: category.icon)
+                                        .font(.system(size: 12, weight: selected ? .bold : .medium))
+                                        .foregroundStyle(selected ? .white : Palette.text)
+                                        .lineLimit(1)
+                                        .fixedSize(horizontal: true, vertical: false)
+                                        .padding(.horizontal, 13)
+                                        .padding(.vertical, 10)
+                                        .background(selected ? BadgeColor.from(category.colorIndex).colors[0] : Palette.soft)
+                                        .clipShape(Capsule())
+                                        .overlay(Capsule().stroke(selected ? Color.clear : Palette.line))
+                                }
+                                .buttonStyle(.plain)
+                                .id(category.id)
+                            }
+                            Color.clear
+                                .frame(width: max((proxy.size.width / 2) - 8, 0), height: 1)
+                        }
+                        .frame(minWidth: proxy.size.width, alignment: .center)
+                    }
+                    .onAppear { centerSelection(using: scrollProxy, animated: false) }
+                    .onChange(of: selection) { _, _ in centerSelection(using: scrollProxy, animated: true) }
+                    .onChange(of: store.categories.map(\.id)) { _, _ in centerSelection(using: scrollProxy, animated: false) }
+                }
+            }
+            .frame(height: 42)
+        }
+    }
+
+    private func centerSelection(using proxy: ScrollViewProxy, animated: Bool) {
+        guard let selection else { return }
+        let action = { proxy.scrollTo(selection, anchor: .center) }
+        DispatchQueue.main.async {
+            if animated {
+                withAnimation(.easeInOut(duration: 0.22), action)
+            } else {
+                action()
+            }
+        }
     }
 }
 

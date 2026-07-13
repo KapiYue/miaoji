@@ -42,13 +42,22 @@ enum AppCurrency: String, Codable, CaseIterable, Identifiable {
     }
 }
 
-private struct StoredData: Codable {
+struct StoredData: Codable, Equatable {
     var records: [ExpenseRecord]
     var categories: [ExpenseCategory]
     var currency: AppCurrency
     var voiceRecognition: Bool
     var budgetReminder: Bool
     var monthlyBudget: Double?
+    var updatedAt: Date? = nil
+}
+
+enum CloudSyncState: Equatable {
+    case notConfigured
+    case signedOut
+    case syncing
+    case synced(Date)
+    case failed(String)
 }
 
 @MainActor
@@ -59,14 +68,25 @@ final class AppStore: ObservableObject {
     @Published var voiceRecognition = true { didSet { save() } }
     @Published var budgetReminder = false { didSet { save() } }
     @Published var monthlyBudget = 4000.0 { didSet { save() } }
+    @Published private(set) var cloudAccountEmail: String?
+    @Published private(set) var cloudSyncState: CloudSyncState
 
     private let key = "MiaoJiAccout.localData.v1"
     private let defaults: UserDefaults
+    private let syncService: SupabaseSyncService?
     private var isLoading = true
+    private var isApplyingCloudData = false
+    private var hasLocalData = false
+    private var localUpdatedAt = Date.distantPast
+    private var cloudUploadTask: Task<Void, Never>?
 
-    init(defaults: UserDefaults = .standard) {
+    init(defaults: UserDefaults = .standard, syncService: SupabaseSyncService? = nil) {
         self.defaults = defaults
+        self.syncService = syncService
+        cloudSyncState = syncService == nil ? .notConfigured : .signedOut
         if let data = defaults.data(forKey: key), let value = try? JSONDecoder().decode(StoredData.self, from: data) {
+            hasLocalData = true
+            localUpdatedAt = value.updatedAt ?? .distantPast
             records = value.records
             categories = value.categories
             currency = value.currency
@@ -74,14 +94,81 @@ final class AppStore: ObservableObject {
             budgetReminder = value.budgetReminder
             monthlyBudget = value.monthlyBudget ?? 4000
         } else {
+            localUpdatedAt = .now
             categories = [
                 ExpenseCategory(name: "餐饮", icon: "fork.knife", colorIndex: 0, budget: 1200),
                 ExpenseCategory(name: "交通", icon: "tram.fill", colorIndex: 1, budget: 500),
-                ExpenseCategory(name: "购物", icon: "bag.fill", colorIndex: 2, budget: 1000)
+                ExpenseCategory(name: "购物", icon: "bag.fill", colorIndex: 2, budget: 1000),
+                ExpenseCategory(name: "医疗", icon: "cross.case.fill", colorIndex: 4),
+                ExpenseCategory(name: "娱乐", icon: "gamecontroller.fill", colorIndex: 3),
+                ExpenseCategory(name: "其他", icon: "ellipsis.circle.fill", colorIndex: 5)
             ]
         }
         isLoading = false
-        save()
+        persistLocalData()
+        if syncService != nil {
+            Task { await restoreCloudSession() }
+        }
+    }
+
+    var isCloudConfigured: Bool { syncService != nil }
+    var isCloudSignedIn: Bool { cloudAccountEmail != nil }
+    var cloudSyncDescription: String {
+        switch cloudSyncState {
+        case .notConfigured: "未配置 Supabase"
+        case .signedOut: "登录后可跨设备查看账本"
+        case .syncing: "正在同步…"
+        case .synced(let date): "已同步 · \(formatDate(date, dateStyle: .none, timeStyle: .short))"
+        case .failed(let message): "同步失败：\(message)"
+        }
+    }
+
+    func requestCloudLoginCode(email: String) async throws {
+        guard let syncService else { throw SupabaseSyncError.notConfigured }
+        try await syncService.requestEmailOTP(email: email.trimmingCharacters(in: .whitespacesAndNewlines))
+    }
+
+    func verifyCloudLoginCode(email: String, code: String) async throws {
+        guard let syncService else { throw SupabaseSyncError.notConfigured }
+        cloudSyncState = .syncing
+        do {
+            cloudAccountEmail = try await syncService.verifyEmailOTP(
+                email: email.trimmingCharacters(in: .whitespacesAndNewlines),
+                token: code.trimmingCharacters(in: .whitespacesAndNewlines)
+            )
+            try await reconcileWithCloud()
+        } catch {
+            cloudSyncState = .failed(error.localizedDescription)
+            throw error
+        }
+    }
+
+    func syncNow() async throws {
+        guard syncService != nil else { throw SupabaseSyncError.notConfigured }
+        guard isCloudSignedIn else { throw SupabaseSyncError.notSignedIn }
+        cloudUploadTask?.cancel()
+        do {
+            try await reconcileWithCloud()
+        } catch {
+            cloudSyncState = .failed(error.localizedDescription)
+            throw error
+        }
+    }
+
+    func refreshFromCloud() async {
+        guard isCloudSignedIn else { return }
+        do {
+            try await reconcileWithCloud()
+        } catch {
+            cloudSyncState = .failed(error.localizedDescription)
+        }
+    }
+
+    func signOutCloudAccount() async {
+        cloudUploadTask?.cancel()
+        await syncService?.signOut()
+        cloudAccountEmail = nil
+        cloudSyncState = syncService == nil ? .notConfigured : .signedOut
     }
 
     func category(for id: UUID) -> ExpenseCategory? { categories.first { $0.id == id } }
@@ -159,7 +246,92 @@ final class AppStore: ObservableObject {
 
     private func save() {
         guard !isLoading else { return }
-        let value = StoredData(records: records, categories: categories, currency: currency, voiceRecognition: voiceRecognition, budgetReminder: budgetReminder, monthlyBudget: monthlyBudget)
-        if let data = try? JSONEncoder().encode(value) { defaults.set(data, forKey: key) }
+        guard !isApplyingCloudData else { return }
+        hasLocalData = true
+        localUpdatedAt = .now
+        persistLocalData()
+        guard isCloudSignedIn else { return }
+        scheduleCloudUpload()
+    }
+
+    private var storedData: StoredData {
+        StoredData(
+            records: records,
+            categories: categories,
+            currency: currency,
+            voiceRecognition: voiceRecognition,
+            budgetReminder: budgetReminder,
+            monthlyBudget: monthlyBudget,
+            updatedAt: localUpdatedAt
+        )
+    }
+
+    private func restoreCloudSession() async {
+        guard let syncService else { return }
+        do {
+            guard let email = try await syncService.restoreSession() else {
+                cloudSyncState = .signedOut
+                return
+            }
+            cloudAccountEmail = email
+            try await reconcileWithCloud()
+        } catch {
+            cloudAccountEmail = nil
+            cloudSyncState = .failed(error.localizedDescription)
+        }
+    }
+
+    private func reconcileWithCloud() async throws {
+        guard let syncService else { throw SupabaseSyncError.notConfigured }
+        cloudSyncState = .syncing
+        if let cloudData = try await syncService.fetchSnapshot() {
+            let cloudUpdatedAt = cloudData.updatedAt ?? .distantPast
+            if !hasLocalData || cloudUpdatedAt >= localUpdatedAt {
+                applyCloudData(cloudData)
+            } else {
+                try await syncService.uploadSnapshot(storedData)
+            }
+        } else {
+            try await syncService.uploadSnapshot(storedData)
+        }
+        cloudSyncState = .synced(.now)
+    }
+
+    private func applyCloudData(_ data: StoredData) {
+        isApplyingCloudData = true
+        localUpdatedAt = data.updatedAt ?? .now
+        hasLocalData = true
+        records = data.records
+        categories = data.categories
+        currency = data.currency
+        voiceRecognition = data.voiceRecognition
+        budgetReminder = data.budgetReminder
+        monthlyBudget = data.monthlyBudget ?? 4000
+        isApplyingCloudData = false
+        persistLocalData()
+    }
+
+    private func persistLocalData() {
+        if let encoded = try? JSONEncoder().encode(storedData) { defaults.set(encoded, forKey: key) }
+    }
+
+    private func scheduleCloudUpload() {
+        guard let syncService else { return }
+        cloudUploadTask?.cancel()
+        cloudUploadTask = Task { [weak self] in
+            do {
+                try await Task.sleep(for: .milliseconds(650))
+                guard let self, !Task.isCancelled else { return }
+                self.cloudSyncState = .syncing
+                try await syncService.uploadSnapshot(self.storedData)
+                guard !Task.isCancelled else { return }
+                self.cloudSyncState = .synced(.now)
+            } catch is CancellationError {
+                return
+            } catch {
+                guard let self, !Task.isCancelled else { return }
+                self.cloudSyncState = .failed(error.localizedDescription)
+            }
+        }
     }
 }

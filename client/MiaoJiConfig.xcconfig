@@ -6,3 +6,8 @@
 //
 // 注意：xcconfig 会把 URL 中的双斜杠识别为注释，$()/ 用于安全生成第二个斜杠。
 MIAOJI_API_BASE_URL = http:/$()/192.168.5.106:8000
+
+// Supabase Dashboard -> Project Settings -> API。
+// 客户端只能使用 Publishable key（或旧版 anon key），绝不能填写 secret/service_role key。
+SUPABASE_URL=https:/$()/vbnswvtycixwhvbwuoxz.supabase.co
+SUPABASE_PUBLISHABLE_KEY=sb_publishable_3EQeNnPfpNP1cAmhE9xPFA_cEJWUqbm

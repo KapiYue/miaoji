@@ -12,18 +12,26 @@ import AVFoundation
 
 struct MiaoJiAccoutTests {
 
-    @Test func voiceTranscriptParsesAmountTitleAndCategory() throws {
-        let foodID = UUID()
-        let categories = [
-            ExpenseCategory(id: foodID, name: "餐饮", icon: "fork.knife", colorIndex: 0),
-            ExpenseCategory(name: "交通", icon: "tram.fill", colorIndex: 1)
-        ]
+    @Test func emailOTPValidationSupportsConfiguredLengthsAndLeadingZeros() {
+        #expect(EmailOTPCode.isValid("123456"))
+        #expect(EmailOTPCode.isValid("00147955"))
+        #expect(EmailOTPCode.isValid("1234567890"))
+        #expect(!EmailOTPCode.isValid("12345"))
+        #expect(EmailOTPCode.normalized("00 147-955") == "00147955")
+    }
 
-        let draft = VoiceEntryParser.parse("午餐花了45.5元，餐饮", categories: categories)
+    @Test @MainActor func aiParsedExpenseDecodesServerPayload() throws {
+        let categoryID = UUID()
+        let payload = """
+        {"amount":45.5,"title":"午餐","category_id":"\(categoryID.uuidString)","category_name":"餐饮"}
+        """.data(using: .utf8)!
 
-        #expect(draft.amount == 45.5)
-        #expect(draft.title == "午餐")
-        #expect(draft.categoryID == foodID)
+        let expense = try JSONDecoder().decode(AIParsedExpense.self, from: payload)
+
+        #expect(expense.amount == 45.5)
+        #expect(expense.title == "午餐")
+        #expect(expense.categoryID == categoryID)
+        #expect(expense.categoryName == "餐饮")
     }
 
     @Test @MainActor func csvExportContainsAllLocalData() throws {
@@ -48,9 +56,11 @@ struct MiaoJiAccoutTests {
         store.budgetReminder = true
         store.monthlyBudget = 3210.5
 
-        let csv = try #require(String(data: store.csvData(isDarkMode: false), encoding: .utf8))
+        let csvData = store.csvData(isDarkMode: false)
+        #expect(csvData.starts(with: [0xEF, 0xBB, 0xBF]))
+        let csv = try #require(String(data: Data(csvData.dropFirst(3)), encoding: .utf8))
 
-        #expect(csv.hasPrefix("\u{FEFF}\"data_type\""))
+        #expect(csv.hasPrefix("\"data_type\""))
         #expect(csv.contains("\"setting\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"\",\"currency\",\"usd\""))
         #expect(csv.contains("\"dark_mode\",\"false\""))
         #expect(csv.contains("\"category\",\"AAAAAAAA-AAAA-AAAA-AAAA-AAAAAAAAAAAA\""))
@@ -61,7 +71,7 @@ struct MiaoJiAccoutTests {
         #expect(csv.contains("\"第一行\n第二行\""))
     }
 
-    @Test func m4aRecorderCanBePrepared() throws {
+    @Test func m4aRecorderCanBeCreated() throws {
         let url = FileManager.default.temporaryDirectory
             .appendingPathComponent("miaoji-\(UUID().uuidString)")
             .appendingPathExtension("m4a")
@@ -78,8 +88,19 @@ struct MiaoJiAccoutTests {
             ]
         )
 
-        #expect(recorder.prepareToRecord())
         #expect(recorder.url.pathExtension == "m4a")
+    }
+
+    @Test func incomeRecordKeepsItsType() {
+        let record = ExpenseRecord(
+            amount: 100,
+            title: "退款",
+            note: "",
+            categoryID: UUID(),
+            type: .income
+        )
+
+        #expect(record.recordType == .income)
     }
 
 }

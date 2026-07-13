@@ -1,18 +1,18 @@
 //
-//  YuJiAccountTests.swift
-//  YuJiAccountTests
+//  MiaoJiAccoutTests.swift
+//  MiaoJiAccoutTests
 //
 //  Created by 清眸 on 2026/6/9.
 //
 
 import Testing
 import Foundation
-@testable import YuJiAccount
+@testable import MiaoJiAccout
 
-struct YuJiAccountTests {
+struct MiaoJiAccoutTests {
 
     @Test @MainActor func csvExportContainsAllLocalData() throws {
-        let suiteName = "YuJiAccountTests.\(UUID().uuidString)"
+        let suiteName = "MiaoJiAccoutTests.\(UUID().uuidString)"
         let defaults = try #require(UserDefaults(suiteName: suiteName))
         defer { defaults.removePersistentDomain(forName: suiteName) }
 

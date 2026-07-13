@@ -1,13 +1,13 @@
 //
-//  YuJiAccountUITestsLaunchTests.swift
-//  YuJiAccountUITests
+//  MiaoJiAccoutUITestsLaunchTests.swift
+//  MiaoJiAccoutUITests
 //
 //  Created by 清眸 on 2026/6/9.
 //
 
 import XCTest
 
-final class YuJiAccountUITestsLaunchTests: XCTestCase {
+final class MiaoJiAccoutUITestsLaunchTests: XCTestCase {
 
     override class var runsForEachTargetApplicationUIConfiguration: Bool {
         true

@@ -60,7 +60,7 @@ final class AppStore: ObservableObject {
     @Published var budgetReminder = false { didSet { save() } }
     @Published var monthlyBudget = 4000.0 { didSet { save() } }
 
-    private let key = "YuJiAccount.localData.v1"
+    private let key = "MiaoJiAccout.localData.v1"
     private let defaults: UserDefaults
     private var isLoading = true
 

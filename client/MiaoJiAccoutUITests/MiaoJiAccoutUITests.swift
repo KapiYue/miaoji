@@ -1,13 +1,13 @@
 //
-//  YuJiAccountUITests.swift
-//  YuJiAccountUITests
+//  MiaoJiAccoutUITests.swift
+//  MiaoJiAccoutUITests
 //
 //  Created by 清眸 on 2026/6/9.
 //
 
 import XCTest
 
-final class YuJiAccountUITests: XCTestCase {
+final class MiaoJiAccoutUITests: XCTestCase {
 
     override func setUpWithError() throws {
         // Put setup code here. This method is called before the invocation of each test method in the class.

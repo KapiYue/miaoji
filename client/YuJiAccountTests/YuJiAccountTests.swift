@@ -1,18 +1,18 @@
 //
-//  VoiceAccoutTests.swift
-//  VoiceAccoutTests
+//  YuJiAccountTests.swift
+//  YuJiAccountTests
 //
 //  Created by 清眸 on 2026/6/9.
 //
 
 import Testing
 import Foundation
-@testable import VoiceAccout
+@testable import YuJiAccount
 
-struct VoiceAccoutTests {
+struct YuJiAccountTests {
 
     @Test @MainActor func csvExportContainsAllLocalData() throws {
-        let suiteName = "VoiceAccoutTests.\(UUID().uuidString)"
+        let suiteName = "YuJiAccountTests.\(UUID().uuidString)"
         let defaults = try #require(UserDefaults(suiteName: suiteName))
         defer { defaults.removePersistentDomain(forName: suiteName) }
 

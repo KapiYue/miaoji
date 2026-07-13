@@ -1,0 +1,4 @@
+flask>=3.1.0
+httpx[socks]>=0.26,<0.29
+python-dotenv>=1.0.0
+supabase>=2.0.0

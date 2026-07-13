@@ -10,7 +10,7 @@ Icon
 .Trashes
 
 # ==============================
-# Xcode / Swift (VoiceAccout)
+# Xcode / Swift (YuJiAccount)
 # ==============================
 build/
 DerivedData/
@@ -86,3 +86,6 @@ prototype_*
 .idea/
 *.swp
 *~
+
+*.env
+venv/

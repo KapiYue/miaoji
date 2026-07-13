@@ -66,10 +66,7 @@ yarn-error.log*
 
 ## Prototype folders themselves (draft UI, not part of the shipped app)
 prototype/
-prototype_2_check/
-prototype_3/
-prototype_4/
-prototype_5/
+prototype_*
 
 # ==============================
 # Archives

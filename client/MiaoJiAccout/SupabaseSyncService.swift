@@ -60,7 +60,21 @@ enum SupabaseSyncError: LocalizedError {
     }
 }
 
-final class SupabaseSyncService {
+@MainActor
+protocol SupabaseSyncServicing: AnyObject {
+    func restoreSession() async throws -> String?
+    func requestEmailOTP(email: String) async throws
+    func verifyEmailOTP(email: String, token: String) async throws -> String
+    func signInWithPassword(email: String, password: String) async throws -> String
+    func recordPrivacyConsent() async throws
+    func fetchSnapshot() async throws -> StoredData?
+    func uploadSnapshot(_ data: StoredData) async throws
+    func accessToken() async throws -> String
+    func deleteAccount() async throws
+    func signOut() async
+}
+
+final class SupabaseSyncService: SupabaseSyncServicing {
     private struct User: Codable {
         let id: UUID
         let email: String?
@@ -100,6 +114,29 @@ final class SupabaseSyncService {
         enum CodingKeys: String, CodingKey {
             case userID = "user_id"
             case data
+        }
+    }
+
+    private struct PrivacyConsentUpload: Encodable {
+        let userID: UUID
+        let policyVersion = "2026-07-14"
+        let termsVersion = "2026-07-14"
+        let crossBorderConsent = true
+        let crossBorderRecipient = "Supabase Pte. Ltd (Singapore)"
+        let consentedAt: String
+
+        init(userID: UUID) {
+            self.userID = userID
+            consentedAt = ISO8601DateFormatter().string(from: .now)
+        }
+
+        enum CodingKeys: String, CodingKey {
+            case userID = "user_id"
+            case policyVersion = "policy_version"
+            case termsVersion = "terms_version"
+            case crossBorderConsent = "cross_border_consent"
+            case crossBorderRecipient = "cross_border_recipient"
+            case consentedAt = "consented_at"
         }
     }
 
@@ -175,6 +212,39 @@ final class SupabaseSyncService {
         return session.user.email ?? email
     }
 
+    func signInWithPassword(email: String, password: String) async throws -> String {
+        struct Payload: Encodable {
+            let email: String
+            let password: String
+        }
+
+        var components = URLComponents(url: try endpoint(path: "auth/v1/token"), resolvingAgainstBaseURL: false)
+        components?.queryItems = [URLQueryItem(name: "grant_type", value: "password")]
+        guard let url = components?.url else { throw SupabaseSyncError.invalidResponse }
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue(configuration.publishableKey, forHTTPHeaderField: "apikey")
+        request.httpBody = try JSONEncoder().encode(Payload(email: email, password: password))
+        let data = try await perform(request)
+        let session = try decodeSession(from: data)
+        save(session)
+        return session.user.email ?? email
+    }
+
+    func recordPrivacyConsent() async throws {
+        let session = try await validSession()
+        var components = URLComponents(url: try endpoint(path: "rest/v1/privacy_consents"), resolvingAgainstBaseURL: false)
+        components?.queryItems = [URLQueryItem(name: "on_conflict", value: "user_id")]
+        guard let url = components?.url else { throw SupabaseSyncError.invalidResponse }
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("resolution=merge-duplicates,return=minimal", forHTTPHeaderField: "Prefer")
+        authorize(&request, accessToken: session.accessToken)
+        request.httpBody = try JSONEncoder().encode(PrivacyConsentUpload(userID: session.user.id))
+        _ = try await perform(request)
+    }
+
     func fetchSnapshot() async throws -> StoredData? {
         let session = try await validSession()
         var components = URLComponents(url: try endpoint(path: "rest/v1/account_snapshots"), resolvingAgainstBaseURL: false)
@@ -202,6 +272,19 @@ final class SupabaseSyncService {
         authorize(&request, accessToken: session.accessToken)
         request.httpBody = try JSONEncoder().encode(SnapshotUpload(userID: session.user.id, data: data))
         _ = try await perform(request)
+    }
+
+    func accessToken() async throws -> String {
+        try await validSession().accessToken
+    }
+
+    func deleteAccount() async throws {
+        let session = try await validSession()
+        var request = try request(path: "rest/v1/rpc/delete_current_account", method: "POST")
+        authorize(&request, accessToken: session.accessToken)
+        request.httpBody = Data("{}".utf8)
+        _ = try await perform(request)
+        signOutLocally()
     }
 
     func signOut() async {

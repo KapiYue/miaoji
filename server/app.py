@@ -2,9 +2,9 @@ import os
 import json
 import math
 import re
+from functools import wraps
 from datetime import datetime, timezone
 from pathlib import Path
-from urllib.parse import urlparse
 from uuid import uuid4
 
 from dotenv import load_dotenv
@@ -16,14 +16,14 @@ from supabase import Client, create_client
 load_dotenv(Path(__file__).resolve().parent / ".env")
 
 supabase_url = os.getenv("SUPABASE_URL")
-supabase_service_role_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+supabase_secret_key = os.getenv("SUPABASE_SECRET_KEY")
 
-if not supabase_url or not supabase_service_role_key:
+if not supabase_url or not supabase_secret_key:
     raise RuntimeError(
-        "SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY must be set in server/.env"
+        "SUPABASE_URL and SUPABASE_SECRET_KEY must be set in server/.env"
     )
 
-supabase: Client = create_client(supabase_url, supabase_service_role_key)
+supabase: Client = create_client(supabase_url, supabase_secret_key)
 
 app = Flask(__name__)
 app.config["MAX_CONTENT_LENGTH"] = 25 * 1024 * 1024
@@ -34,23 +34,50 @@ DASHSCOPE_BASE_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1"
 DASHSCOPE_MODEL = os.getenv("DASHSCOPE_MODEL", "qwen-omni-turbo-0119")
 
 
-@app.route("/")
-def hello():
-    return "hello flask"
+@app.get("/")
+@app.get("/healthz")
+def health_check():
+    return jsonify({"status": "ok"})
 
 
-@app.route("/supabase-test")
-def supabase_test():
+def require_authenticated_user(view):
+    @wraps(view)
+    def wrapped(*args, **kwargs):
+        authorization = request.headers.get("Authorization", "")
+        scheme, _, token = authorization.partition(" ")
+        if scheme.lower() != "bearer" or not token.strip():
+            return jsonify({"error": "a valid Supabase bearer token is required"}), 401
+        try:
+            auth_response = supabase.auth.get_user(token.strip())
+            user = getattr(auth_response, "user", None)
+            user_id = getattr(user, "id", None)
+            if not user_id:
+                raise ValueError("missing user")
+        except Exception:
+            app.logger.info("Rejected an invalid Supabase bearer token")
+            return jsonify({"error": "the Supabase session is invalid or expired"}), 401
+        return view(str(user_id), *args, **kwargs)
+
+    return wrapped
+
+
+def _temporary_audio_url(bucket, audio_path):
     try:
-        users = supabase.auth.admin.list_users()
-        return jsonify({"connected": True, "user_count": len(users)})
+        signed = bucket.create_signed_url(audio_path, 300)
     except Exception as exc:
-        app.logger.exception("Supabase connection test failed")
-        return jsonify({"connected": False, "error": str(exc)}), 500
+        raise RuntimeError("failed to create a temporary audio URL") from exc
+    if isinstance(signed, dict):
+        value = signed.get("signedURL") or signed.get("signedUrl") or signed.get("signed_url")
+    else:
+        value = getattr(signed, "signed_url", None)
+    if not isinstance(value, str) or not value.startswith("https://"):
+        raise RuntimeError("storage returned an invalid temporary audio URL")
+    return value
 
 
 @app.post("/upload-audio")
-def upload_audio():
+@require_authenticated_user
+def upload_audio(user_id):
     audio_file = request.files.get("file")
     if audio_file is None:
         return jsonify({"error": "multipart field 'file' is required"}), 400
@@ -66,7 +93,7 @@ def upload_audio():
         return jsonify({"error": "audio file is empty"}), 400
 
     now = datetime.now(timezone.utc)
-    storage_path = f"{now:%Y/%m/%d}/{uuid4().hex}.m4a"
+    storage_path = f"{user_id}/{now:%Y/%m/%d}/{uuid4().hex}.m4a"
 
     try:
         supabase.storage.from_(USER_AUDIO_BUCKET).upload(
@@ -78,13 +105,9 @@ def upload_audio():
                 "upsert": "false",
             },
         )
-        public_url = supabase.storage.from_(USER_AUDIO_BUCKET).get_public_url(
-            storage_path
-        )
         return (
             jsonify(
                 {
-                    "url": public_url,
                     "path": storage_path,
                     "bucket": USER_AUDIO_BUCKET,
                 }
@@ -97,28 +120,31 @@ def upload_audio():
 
 
 @app.post("/parse-audio-expenses")
-def parse_audio_expenses():
+@require_authenticated_user
+def parse_audio_expenses(user_id):
     """Turn one uploaded recording into one or more normalized expense drafts."""
     payload = request.get_json(silent=True)
     if not isinstance(payload, dict):
         return jsonify({"error": "a JSON request body is required"}), 400
 
-    audio_url = payload.get("audio_url")
+    audio_path = payload.get("audio_path")
     categories = payload.get("categories")
-    if not isinstance(audio_url, str) or not _is_uploaded_audio_url(audio_url):
-        return jsonify({"error": "audio_url must point to an uploaded user-audio file"}), 400
+    if not _is_user_audio_path(audio_path, user_id):
+        return jsonify({"error": "audio_path must identify the current user's uploaded audio"}), 400
 
+    bucket = supabase.storage.from_(USER_AUDIO_BUCKET)
     try:
-        normalized_categories = _validate_categories(categories)
-    except ValueError as exc:
-        return jsonify({"error": str(exc)}), 400
+        try:
+            normalized_categories = _validate_categories(categories)
+        except ValueError as exc:
+            return jsonify({"error": str(exc)}), 400
 
-    api_key = os.getenv("DASHSCOPE_API_KEY")
-    if not api_key:
-        return jsonify({"error": "DASHSCOPE_API_KEY is not configured"}), 503
+        api_key = os.getenv("DASHSCOPE_API_KEY")
+        if not api_key:
+            return jsonify({"error": "DASHSCOPE_API_KEY is not configured"}), 503
 
-    prompt = _expense_prompt(normalized_categories)
-    try:
+        audio_url = _temporary_audio_url(bucket, audio_path)
+        prompt = _expense_prompt(normalized_categories)
         client = OpenAI(
             api_key=api_key,
             base_url=DASHSCOPE_BASE_URL,
@@ -153,6 +179,11 @@ def parse_audio_expenses():
     except Exception:
         app.logger.exception("DashScope audio parsing failed")
         return jsonify({"error": "failed to parse the audio with AI"}), 502
+    finally:
+        try:
+            bucket.remove([audio_path])
+        except Exception:
+            app.logger.exception("Failed to delete temporary audio object %s", audio_path)
 
 
 def _validate_categories(value):
@@ -180,18 +211,16 @@ def _validate_categories(value):
     return normalized
 
 
-def _is_uploaded_audio_url(value):
-    try:
-        audio = urlparse(value)
-        storage = urlparse(supabase_url)
-    except ValueError:
+def _is_user_audio_path(value, user_id):
+    if not isinstance(value, str):
         return False
-    expected_prefix = f"/storage/v1/object/public/{USER_AUDIO_BUCKET}/"
+    expected_prefix = f"{user_id}/"
     return (
-        audio.scheme == "https"
-        and audio.hostname == storage.hostname
-        and audio.path.startswith(expected_prefix)
-        and audio.path.lower().endswith(".m4a")
+        value.startswith(expected_prefix)
+        and value.lower().endswith(".m4a")
+        and ".." not in value
+        and "//" not in value
+        and len(value) <= 300
     )
 
 

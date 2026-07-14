@@ -12,11 +12,21 @@ struct SettingsView: View {
     @State private var showCategoryManager = false
     @State private var showCloudLogin = false
     @State private var cloudActionError: String?
+    @State private var showDeleteAccountConfirmation = false
+    @State private var isDeletingAccount = false
     var body: some View {
         Screen {
             Hero(eyebrow: "系统设置", title: "设置", subtitle: "管理货币、分类、同步和隐私。", pill: "个人", showsContainer: false) {
                 GlassCard {
-                    HStack(spacing: 14) { Badge(text: "清", color: .cyan, size: 56); VStack(alignment: .leading, spacing: 4) { Text("清眸").font(.system(size: 18, weight: .heavy)); Text("语音记账专业版 · \(store.cloudSyncDescription)").font(.caption).foregroundStyle(Palette.muted).lineLimit(2) }; Spacer(); Pill("专业版") }
+                    HStack(spacing: 14) {
+                        Badge(text: "妙", color: .cyan, size: 56)
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("妙记").font(.system(size: 18, weight: .heavy))
+                            Text(store.cloudSyncDescription).font(.caption).foregroundStyle(Palette.muted).lineLimit(2)
+                        }
+                        Spacer()
+                        Pill(store.isCloudSignedIn ? "已登录" : "本地模式")
+                    }
                 }
             }
             SettingsCard(title: "货币", subtitle: "支持多币种和显示格式切换。") {
@@ -88,6 +98,9 @@ struct SettingsView: View {
                     .buttonStyle(GradientButtonStyle())
                     Button("退出云同步账号") { Task { await store.signOutCloudAccount() } }
                         .buttonStyle(SoftButtonStyle(fullWidth: true))
+                    Button("永久删除账号与数据") { showDeleteAccountConfirmation = true }
+                        .buttonStyle(DangerButtonStyle())
+                        .disabled(isDeletingAccount)
                 } else {
                     Button("登录并开启云同步") { showCloudLogin = true }
                         .buttonStyle(GradientButtonStyle())
@@ -95,12 +108,16 @@ struct SettingsView: View {
             }
             SettingsCard(title: "数据与隐私", subtitle: "导出、备份和清除数据的高风险操作应清晰区分。") {
                 Button("导出 CSV") { exporting = true }.buttonStyle(GradientButtonStyle())
-                Button("清除全部数据") { showClearConfirmation = true }.buttonStyle(DangerButtonStyle())
+                Button("清除全部记账记录") { showClearConfirmation = true }.buttonStyle(DangerButtonStyle())
             }
             SettingsCard(title: "关于", subtitle: "版本信息、隐私和服务协议。") {
-                Button { aboutPage = .version } label: { AboutRow(title: "版本", subtitle: "语音记账 v2.0") }.buttonStyle(.plain)
+                Button { aboutPage = .version } label: { AboutRow(title: "版本", subtitle: AppMetadata.versionDescription) }.buttonStyle(.plain)
                 Button { aboutPage = .privacy } label: { AboutRow(title: "隐私政策", subtitle: "查看数据收集和存储说明") }.buttonStyle(.plain)
                 Button { aboutPage = .agreement } label: { AboutRow(title: "用户协议", subtitle: "查看使用条款") }.buttonStyle(.plain)
+                if let supportURL = AppMetadata.supportURL {
+                    Link(destination: supportURL) { AboutRow(title: "支持与联系", subtitle: "打开支持页面") }
+                        .buttonStyle(.plain)
+                }
             }
         }
         .sheet(isPresented: $showCurrency) { CurrencyPicker() }
@@ -109,11 +126,29 @@ struct SettingsView: View {
         .sheet(isPresented: $showCloudLogin) { CloudLoginView() }
         .sheet(item: $aboutPage) { AboutDetail(page: $0) }
         .fileExporter(isPresented: $exporting, document: CSVDocument(data: store.csvData(isDarkMode: isDarkMode)), contentType: .commaSeparatedText, defaultFilename: "voice-account-\(Date.now.formatted(.iso8601.year().month().day()))") { _ in }
-        .confirmationDialog("确定清除全部记账记录？", isPresented: $showClearConfirmation, titleVisibility: .visible) { Button("清除全部数据", role: .destructive) { store.records.removeAll() }; Button("取消", role: .cancel) {} } message: { Text("开启云同步时，这次删除也会同步到 Supabase。") }
+        .confirmationDialog("确定清除全部记账记录？", isPresented: $showClearConfirmation, titleVisibility: .visible) { Button("清除全部记账记录", role: .destructive) { store.records.removeAll() }; Button("取消", role: .cancel) {} } message: { Text("开启云同步时，这次删除也会同步到 Supabase。分类和偏好设置会保留。") }
+        .confirmationDialog("永久删除账号？", isPresented: $showDeleteAccountConfirmation, titleVisibility: .visible) {
+            Button("永久删除账号与全部数据", role: .destructive) { deleteAccount() }
+            Button("取消", role: .cancel) {}
+        } message: {
+            Text("此操作会永久删除 Supabase 登录账号、云端账本和本机账本，且无法撤销。")
+        }
         .alert("云同步操作失败", isPresented: Binding(get: { cloudActionError != nil }, set: { if !$0 { cloudActionError = nil } })) {
             Button("知道了") { cloudActionError = nil }
         } message: {
             Text(cloudActionError ?? "")
+        }
+    }
+
+    private func deleteAccount() {
+        isDeletingAccount = true
+        Task {
+            defer { isDeletingAccount = false }
+            do {
+                try await store.deleteCloudAccountAndLocalData()
+            } catch {
+                cloudActionError = error.localizedDescription
+            }
         }
     }
 }
@@ -149,24 +184,46 @@ struct CurrencyPicker: View {
 }
 
 struct CloudLoginView: View {
+    private enum LoginMethod: String, CaseIterable, Identifiable {
+        case code = "邮箱验证码"
+        case password = "邮箱密码"
+        var id: String { rawValue }
+    }
+
     @EnvironmentObject private var store: AppStore
     @Environment(\.dismiss) private var dismiss
     @State private var email = ""
     @State private var code = ""
+    @State private var password = ""
+    @State private var loginMethod: LoginMethod = .code
     @State private var codeSent = false
     @State private var isWorking = false
     @State private var errorMessage: String?
+    @State private var acceptedTerms = false
+    @State private var acceptedCrossBorderTransfer = false
 
     var body: some View {
         NavigationStack {
             Form {
+                Section {
+                    Picker("登录方式", selection: $loginMethod) {
+                        ForEach(LoginMethod.allCases) { method in Text(method.rawValue).tag(method) }
+                    }
+                    .pickerStyle(.segmented)
+                    .onChange(of: loginMethod) { _, _ in
+                        codeSent = false
+                        code = ""
+                        password = ""
+                    }
+                }
+
                 Section {
                     TextField("name@example.com", text: $email)
                         .textContentType(.emailAddress)
                         .textInputAutocapitalization(.never)
                         .keyboardType(.emailAddress)
                         .autocorrectionDisabled()
-                    if codeSent {
+                    if loginMethod == .code && codeSent {
                         TextField("6–10 位验证码", text: $code)
                             .textContentType(.oneTimeCode)
                             .keyboardType(.numberPad)
@@ -174,22 +231,52 @@ struct CloudLoginView: View {
                                 let normalized = EmailOTPCode.normalized(value)
                                 if normalized != value { code = normalized }
                             }
+                    } else if loginMethod == .password {
+                        SecureField("密码", text: $password)
+                            .textContentType(.password)
                     }
                 } header: {
-                    Text(codeSent ? "输入邮箱验证码" : "云同步账号")
+                    Text(loginMethod == .password ? "邮箱密码登录" : (codeSent ? "输入邮箱验证码" : "云同步账号"))
                 } footer: {
-                    Text(codeSent ? "验证码已发送到 \(email)。" : "新邮箱会自动创建 Supabase 账号；换机后使用相同邮箱即可恢复账本。")
+                    if loginMethod == .password {
+                        Text("密码登录适用于已设置密码的账号；新用户请使用邮箱验证码。")
+                    } else {
+                        Text(codeSent ? "验证码已发送到 \(email)。" : "新邮箱会自动创建 Supabase 账号；换机后使用相同邮箱即可恢复账本。")
+                    }
                 }
 
                 Section {
-                    if codeSent {
+                    Toggle("我已阅读并同意隐私政策和用户协议", isOn: $acceptedTerms)
+                    HStack(spacing: 18) {
+                        if let privacyURL = AppMetadata.privacyPolicyURL {
+                            Link("隐私政策", destination: privacyURL)
+                        }
+                        if let termsURL = AppMetadata.termsURL {
+                            Link("用户协议", destination: termsURL)
+                        }
+                    }
+                    Toggle(
+                        "我单独同意将邮箱、账号标识、账本和使用语音记账时提交的录音传输至新加坡的 Supabase 服务",
+                        isOn: $acceptedCrossBorderTransfer
+                    )
+                } header: {
+                    Text("授权与跨境传输")
+                } footer: {
+                    Text("用于账号、云同步及录音临时存储。录音随后发送至中国大陆的阿里云百炼解析。你可以不同意并继续使用本地手动记账；此时云同步和语音记账不可用。")
+                }
+
+                Section {
+                    if loginMethod == .password {
+                        Button("登录并开始同步") { signInWithPassword() }
+                            .disabled(isWorking || !hasRequiredConsent || !isValidEmail || password.count < 8)
+                    } else if codeSent {
                         Button("验证并开始同步") { verifyCode() }
-                            .disabled(isWorking || !EmailOTPCode.isValid(code))
+                            .disabled(isWorking || !hasRequiredConsent || !EmailOTPCode.isValid(code))
                         Button("重新发送验证码") { requestCode() }
-                            .disabled(isWorking)
+                            .disabled(isWorking || !hasRequiredConsent)
                     } else {
                         Button("发送验证码") { requestCode() }
-                            .disabled(isWorking || !isValidEmail)
+                            .disabled(isWorking || !hasRequiredConsent || !isValidEmail)
                     }
                 }
             }
@@ -207,6 +294,10 @@ struct CloudLoginView: View {
 
     private var isValidEmail: Bool {
         email.contains("@") && email.split(separator: "@").last?.contains(".") == true
+    }
+
+    private var hasRequiredConsent: Bool {
+        acceptedTerms && acceptedCrossBorderTransfer
     }
 
     private func requestCode() {
@@ -228,6 +319,19 @@ struct CloudLoginView: View {
             defer { isWorking = false }
             do {
                 try await store.verifyCloudLoginCode(email: email, code: EmailOTPCode.normalized(code))
+                dismiss()
+            } catch {
+                errorMessage = error.localizedDescription
+            }
+        }
+    }
+
+    private func signInWithPassword() {
+        isWorking = true
+        Task {
+            defer { isWorking = false }
+            do {
+                try await store.signInToCloud(email: email, password: password)
                 dismiss()
             } catch {
                 errorMessage = error.localizedDescription
@@ -383,12 +487,65 @@ struct CategoryEditor: View {
     }
 }
 
-enum AboutPage: String, Identifiable { case version = "版本", privacy = "隐私政策", agreement = "用户协议"; var id: String { rawValue } }
+enum AboutPage: String, Identifiable {
+    case version = "版本", privacy = "隐私政策", agreement = "用户协议"
+    var id: String { rawValue }
+    var externalURL: URL? {
+        switch self {
+        case .version: nil
+        case .privacy: AppMetadata.privacyPolicyURL
+        case .agreement: AppMetadata.termsURL
+        }
+    }
+}
+
+enum AppMetadata {
+    static var versionDescription: String {
+        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "—"
+        let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "—"
+        return "妙记 v\(version)（\(build)）"
+    }
+
+    static let privacyPolicyURL = configuredURL(for: "PRIVACY_POLICY_URL")
+    static let termsURL = configuredURL(for: "TERMS_OF_SERVICE_URL")
+    static let supportURL = configuredURL(for: "SUPPORT_URL")
+
+    private static func configuredURL(for key: String) -> URL? {
+        guard let value = Bundle.main.object(forInfoDictionaryKey: key) as? String,
+              let url = URL(string: value),
+              url.scheme == "https" else { return nil }
+        return url
+    }
+}
+
 struct AboutDetail: View {
     let page: AboutPage
     @Environment(\.dismiss) private var dismiss
-    var text: String { switch page { case .version: "语音记账 v2.0\n账目保留本地离线缓存；登录后同步到 Supabase。"; case .privacy: "账目、分类和设置会保存在设备本地。开启云同步后，完整账本会存入 Supabase，并通过账号身份和行级安全策略隔离。使用语音记账时，录音会上传到已配置的存储服务，并发送给阿里云百炼用于解析记账明细；应用不会出售个人数据。导出文件由用户自行保管。"; case .agreement: "使用本应用即表示你同意自行核对记账信息。应用提供记录与统计工具，不构成财务建议。" } }
-    var body: some View { NavigationStack { ScrollView { Text(text).frame(maxWidth: .infinity, alignment: .leading).padding() }.navigationTitle(page.rawValue).toolbar { Button("完成") { dismiss() } } } }
+    var text: String {
+        switch page {
+        case .version:
+            "\(AppMetadata.versionDescription)\n\n账目保留本地离线缓存；登录后可同步到 Supabase。"
+        case .privacy:
+            "账目、分类和设置默认保存在设备本地。登录云同步后，邮箱地址、账号标识和账本会存入 Supabase。使用语音记账时，录音会经妙记服务端临时存储，并发送给阿里云百炼用于生成记账草稿；每次解析尝试结束后服务端会删除临时录音，本机会删除已成功解析或已取消的录音。妙记不进行广告跟踪，也不出售个人数据。你可以导出账本、清除记录，或在设置中永久删除账号及关联数据。"
+        case .agreement:
+            "使用本应用即表示你同意自行核对记账信息。语音与 AI 生成的内容可能不准确；应用提供记录与统计工具，不构成财务、税务或投资建议。"
+        }
+    }
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 20) {
+                    Text(text).frame(maxWidth: .infinity, alignment: .leading)
+                    if let url = page.externalURL {
+                        Link("查看完整\(page.rawValue)", destination: url)
+                    }
+                }
+                .padding()
+            }
+            .navigationTitle(page.rawValue)
+            .toolbar { Button("完成") { dismiss() } }
+        }
+    }
 }
 
 struct CSVDocument: FileDocument {

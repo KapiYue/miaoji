@@ -9,8 +9,19 @@ import SwiftUI
 
 @main
 struct MiaoJiAccoutApp: App {
-    @StateObject private var store = AppStore(syncService: SupabaseSyncService.configured())
+    @StateObject private var store: AppStore
     @Environment(\.scenePhase) private var scenePhase
+
+    init() {
+        let screenshotMode = ProcessInfo.processInfo.arguments.contains("--screenshot-demo-data")
+        if screenshotMode { UserDefaults.standard.set(false, forKey: "isDarkMode") }
+        _store = StateObject(
+            wrappedValue: AppStore(
+                syncService: screenshotMode ? nil : SupabaseSyncService.configured(),
+                demoData: screenshotMode
+            )
+        )
+    }
     var body: some Scene {
         WindowGroup {
             ContentView()

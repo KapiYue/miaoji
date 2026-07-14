@@ -102,9 +102,9 @@ cd miaoji
 
 ### 2. Configure Supabase
 
-Run [`supabase/migrations/202607130001_create_account_snapshots.sql`](supabase/migrations/202607130001_create_account_snapshots.sql) in the Supabase SQL Editor. Then configure email OTP templates as described in [`supabase/README.md`](supabase/README.md).
+Run every SQL file in [`supabase/migrations`](supabase/migrations) in filename order using the Supabase SQL Editor. Then configure email OTP templates as described in [`supabase/README.md`](supabase/README.md).
 
-The current voice pipeline expects a **public** Storage bucket named `user-audio`. Use non-sensitive test recordings during development and define an appropriate retention policy before production deployment.
+The voice pipeline uses a **private** Storage bucket named `user-audio`. The API creates short-lived signed URLs and deletes uploaded recordings after parsing; configure a 24-hour lifecycle cleanup as a fallback for interrupted requests.
 
 ### 3. Configure the iOS client
 
@@ -154,6 +154,7 @@ xcodebuild test \
 - Voice recordings are uploaded to the configured Supabase Storage bucket and sent to the configured DashScope model for parsing.
 - The Flask API requires the Supabase `service_role` key; keep it exclusively on a trusted server.
 - Review [`SECURITY.md`](SECURITY.md) for vulnerability reporting and [`supabase/README.md`](supabase/README.md) for RLS setup.
+- Follow [`docs/app-store-release-checklist.md`](docs/app-store-release-checklist.md) before creating an App Store archive.
 
 ## Contributing
 
@@ -166,4 +167,4 @@ MiaoJi is available under the [MIT License](LICENSE).
 ## Contact
 
 - Repository: [github.com/KapiYue/miaoji](https://github.com/KapiYue/miaoji)
-- Maintainer: [ellnazhang520@gmail.com](mailto:ellnazhang520@gmail.com)
+- Maintainer: [zdjoey@126.com](mailto:zdjoey@126.com)

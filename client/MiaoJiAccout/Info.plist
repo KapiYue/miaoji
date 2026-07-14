@@ -2,8 +2,18 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<key>CFBundleDisplayName</key>
+	<string>妙记</string>
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
 	<key>MIAOJI_API_BASE_URL</key>
 	<string>$(MIAOJI_API_BASE_URL)</string>
+	<key>PRIVACY_POLICY_URL</key>
+	<string>https://github.com/KapiYue/miaoji/blob/main/docs/privacy-policy.md</string>
+	<key>TERMS_OF_SERVICE_URL</key>
+	<string>https://github.com/KapiYue/miaoji/blob/main/docs/terms-of-service.md</string>
+	<key>SUPPORT_URL</key>
+	<string>https://github.com/KapiYue/miaoji/blob/main/docs/support.md</string>
 	<key>SUPABASE_URL</key>
 	<string>$(SUPABASE_URL)</string>
 	<key>SUPABASE_PUBLISHABLE_KEY</key>

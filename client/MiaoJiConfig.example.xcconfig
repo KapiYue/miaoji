@@ -1,0 +1,8 @@
+// Copy this file to MiaoJiConfig.xcconfig for local development. The copied
+// file is git-ignored. App Store archives must use a public HTTPS API URL.
+MIAOJI_API_BASE_URL = https:/$()/api.example.com
+
+// Supabase publishable/anon keys are designed for clients. Never place a
+// secret or service_role key in this file.
+SUPABASE_URL = https:/$()/YOUR_PROJECT.supabase.co
+SUPABASE_PUBLISHABLE_KEY = YOUR_PUBLISHABLE_KEY

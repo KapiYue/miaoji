@@ -116,8 +116,23 @@ struct EntrySheetView: View {
                     }
                     Button {
                         if voiceInput.isRecording {
-                            Task { await voiceInput.stopRecording(categories: store.categories) }
+                            Task {
+                                do {
+                                    let token = try await store.voiceAuthorizationToken()
+                                    await voiceInput.stopRecording(
+                                        categories: store.categories,
+                                        authorizationToken: token
+                                    )
+                                } catch {
+                                    voiceInput.cancelRecording()
+                                    voiceInput.showAuthorizationFailure(error)
+                                }
+                            }
                         } else {
+                            guard store.isCloudSignedIn else {
+                                voiceInput.showAccountRequired()
+                                return
+                            }
                             Task { await voiceInput.startRecording() }
                         }
                     } label: {
@@ -137,8 +152,18 @@ struct EntrySheetView: View {
                     .opacity(voiceInput.isBusy ? 0.6 : 1)
 
                     if voiceInput.canRetry {
-                        Button(voiceInput.uploadedAudioURL == nil ? "重新上传并解析" : "重新进行 AI 解析") {
-                            Task { await voiceInput.retry(categories: store.categories) }
+                        Button(voiceInput.uploadedAudioPath == nil ? "重新上传并解析" : "重新进行 AI 解析") {
+                            Task {
+                                do {
+                                    let token = try await store.voiceAuthorizationToken()
+                                    await voiceInput.retry(
+                                        categories: store.categories,
+                                        authorizationToken: token
+                                    )
+                                } catch {
+                                    voiceInput.showAuthorizationFailure(error)
+                                }
+                            }
                         }
                         .buttonStyle(SoftButtonStyle(fullWidth: true))
                     }

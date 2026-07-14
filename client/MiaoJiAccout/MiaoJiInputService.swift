@@ -24,7 +24,7 @@ final class MiaoJiInputService: ObservableObject {
     @Published private(set) var isAnalyzing = false
     @Published private(set) var statusMessage = "点击“开始录音”后说出一笔或多笔消费。"
     @Published private(set) var recordedFileURL: URL?
-    @Published private(set) var uploadedAudioURL: URL?
+    @Published private(set) var uploadedAudioPath: String?
     @Published private(set) var parsedExpenses: [AIParsedExpense] = []
 
     private var operationID = 0
@@ -45,6 +45,7 @@ final class MiaoJiInputService: ObservableObject {
         } else {
             self.urlSession = .shared
         }
+        Self.removeStaleRecordings()
     }
 
     func startRecording() async {
@@ -55,8 +56,8 @@ final class MiaoJiInputService: ObservableObject {
         isRequestingPermission = true
         statusMessage = "正在请求录音权限…"
         parsedExpenses = []
-        recordedFileURL = nil
-        uploadedAudioURL = nil
+        removeLocalRecording()
+        uploadedAudioPath = nil
 
         let microphoneAuthorized = await requestMicrophonePermission()
         guard currentOperationID == operationID else { return }
@@ -79,7 +80,7 @@ final class MiaoJiInputService: ObservableObject {
         }
     }
 
-    func stopRecording(categories: [ExpenseCategory]) async {
+    func stopRecording(categories: [ExpenseCategory], authorizationToken: String) async {
         guard isRecording || isRequestingPermission else { return }
 
         operationID += 1
@@ -94,29 +95,51 @@ final class MiaoJiInputService: ObservableObject {
             statusMessage = "未生成录音文件，请重新录音。"
             return
         }
-        await uploadAndAnalyze(recordedFileURL, categories: categories, operationID: currentOperationID)
+        await uploadAndAnalyze(
+            recordedFileURL,
+            categories: categories,
+            authorizationToken: authorizationToken,
+            operationID: currentOperationID
+        )
     }
 
-    func retry(categories: [ExpenseCategory]) async {
+    func retry(categories: [ExpenseCategory], authorizationToken: String) async {
         guard canRetry else { return }
         operationID += 1
         let currentOperationID = operationID
         parsedExpenses = []
-        if let uploadedAudioURL {
-            await analyze(audioURL: uploadedAudioURL, categories: categories, operationID: currentOperationID)
+        if let uploadedAudioPath {
+            await analyze(
+                audioPath: uploadedAudioPath,
+                categories: categories,
+                authorizationToken: authorizationToken,
+                operationID: currentOperationID
+            )
         } else if let recordedFileURL {
-            await uploadAndAnalyze(recordedFileURL, categories: categories, operationID: currentOperationID)
+            await uploadAndAnalyze(
+                recordedFileURL,
+                categories: categories,
+                authorizationToken: authorizationToken,
+                operationID: currentOperationID
+            )
         }
     }
 
+    func showAccountRequired() {
+        statusMessage = "语音解析需要先在“设置”中登录云同步账号；手动记账无需登录。"
+    }
+
+    func showAuthorizationFailure(_ error: Error) {
+        statusMessage = "无法验证语音服务账号：\(error.localizedDescription)"
+    }
+
     func cancelRecording() {
-        let shouldDiscard = isRecording || isRequestingPermission
         operationID += 1
         isRequestingPermission = false
         isUploading = false
         isAnalyzing = false
         stopAudioCapture()
-        if shouldDiscard { discardCurrentRecording() }
+        discardCurrentRecording()
     }
 
     private func beginRecording() throws {
@@ -150,7 +173,12 @@ final class MiaoJiInputService: ObservableObject {
         try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
     }
 
-    private func uploadAndAnalyze(_ fileURL: URL, categories: [ExpenseCategory], operationID: Int) async {
+    private func uploadAndAnalyze(
+        _ fileURL: URL,
+        categories: [ExpenseCategory],
+        authorizationToken: String,
+        operationID: Int
+    ) async {
         guard let apiBaseURL else {
             statusMessage = "未配置服务端地址，无法上传录音。"
             return
@@ -173,6 +201,7 @@ final class MiaoJiInputService: ObservableObject {
             request.httpMethod = "POST"
             request.timeoutInterval = 60
             request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
+            request.setValue("Bearer \(authorizationToken)", forHTTPHeaderField: "Authorization")
             request.httpBody = Self.multipartBody(fileData: fileData, filename: fileURL.lastPathComponent, boundary: boundary)
 
             let (data, response) = try await urlSession.data(for: request)
@@ -183,9 +212,14 @@ final class MiaoJiInputService: ObservableObject {
             }
 
             let result = try JSONDecoder().decode(AudioUploadResponse.self, from: data)
-            uploadedAudioURL = result.url
+            uploadedAudioPath = result.path
             isUploading = false
-            await analyze(audioURL: result.url, categories: categories, operationID: operationID)
+            await analyze(
+                audioPath: result.path,
+                categories: categories,
+                authorizationToken: authorizationToken,
+                operationID: operationID
+            )
         } catch {
             guard operationID == self.operationID else { return }
             isUploading = false
@@ -193,19 +227,25 @@ final class MiaoJiInputService: ObservableObject {
         }
     }
 
-    private func analyze(audioURL: URL, categories: [ExpenseCategory], operationID: Int) async {
+    private func analyze(
+        audioPath: String,
+        categories: [ExpenseCategory],
+        authorizationToken: String,
+        operationID: Int
+    ) async {
         guard let apiBaseURL else { return }
         isAnalyzing = true
         statusMessage = "AI 正在理解语音并拆分记账明细…"
         do {
             let body = ParseAudioRequest(
-                audioURL: audioURL.absoluteString,
+                audioPath: audioPath,
                 categories: categories.map { .init(id: $0.id.uuidString, name: $0.name) }
             )
             var request = URLRequest(url: apiBaseURL.appendingPathComponent("parse-audio-expenses"))
             request.httpMethod = "POST"
             request.timeoutInterval = 120
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            request.setValue("Bearer \(authorizationToken)", forHTTPHeaderField: "Authorization")
             request.httpBody = try JSONEncoder().encode(body)
 
             let (data, response) = try await urlSession.data(for: request)
@@ -216,29 +256,54 @@ final class MiaoJiInputService: ObservableObject {
             }
             let result = try JSONDecoder().decode([AIParsedExpense].self, from: data)
             parsedExpenses = result
+            uploadedAudioPath = nil
             isAnalyzing = false
+            removeLocalRecording()
             statusMessage = result.isEmpty
                 ? "没有识别到明确的记账明细，请重试并说清金额和用途。"
                 : "AI 已识别 \(result.count) 笔明细，请核对后统一保存。"
         } catch {
             guard operationID == self.operationID else { return }
             isAnalyzing = false
+            // The server deletes its temporary object after every parse attempt,
+            // so a retry must upload the retained local recording again.
+            uploadedAudioPath = nil
             statusMessage = Self.failureMessage(for: error, action: "AI 解析", apiBaseURL: apiBaseURL)
         }
     }
 
     private func makeRecordingURL() throws -> URL {
-        let directory = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        let directory = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
             .appending(path: "Recordings", directoryHint: .isDirectory)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         return directory.appending(path: "recording-\(UUID().uuidString.lowercased())").appendingPathExtension("m4a")
     }
 
     private func discardCurrentRecording() {
+        removeLocalRecording()
+        uploadedAudioPath = nil
+        parsedExpenses = []
+    }
+
+    private func removeLocalRecording() {
         if let recordedFileURL { try? FileManager.default.removeItem(at: recordedFileURL) }
         recordedFileURL = nil
-        uploadedAudioURL = nil
-        parsedExpenses = []
+    }
+
+    private static func removeStaleRecordings() {
+        let manager = FileManager.default
+        guard let directory = manager.urls(for: .cachesDirectory, in: .userDomainMask).first?
+            .appending(path: "Recordings", directoryHint: .isDirectory),
+              let files = try? manager.contentsOfDirectory(
+                at: directory,
+                includingPropertiesForKeys: [.contentModificationDateKey],
+                options: [.skipsHiddenFiles]
+              ) else { return }
+        let cutoff = Date.now.addingTimeInterval(-24 * 60 * 60)
+        for file in files {
+            let modifiedAt = try? file.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate
+            if modifiedAt.map({ $0 < cutoff }) ?? true { try? manager.removeItem(at: file) }
+        }
     }
 
     private static func multipartBody(fileData: Data, filename: String, boundary: String) -> Data {
@@ -274,7 +339,9 @@ final class MiaoJiInputService: ObservableObject {
         return URL(string: "http://127.0.0.1:8000")
 #else
         if let value = Bundle.main.object(forInfoDictionaryKey: "MIAOJI_API_BASE_URL") as? String,
-           let url = URL(string: value.trimmingCharacters(in: .whitespacesAndNewlines)) {
+           let url = URL(string: value.trimmingCharacters(in: .whitespacesAndNewlines)),
+           url.scheme?.lowercased() == "https",
+           url.host != nil {
             return url
         }
         return nil
@@ -299,15 +366,15 @@ private extension URL {
     }
 }
 
-private struct AudioUploadResponse: Decodable { let url: URL }
+private struct AudioUploadResponse: Decodable { let path: String }
 private struct APIErrorResponse: Decodable { let error: String }
 
 private struct ParseAudioRequest: Encodable {
-    let audioURL: String
+    let audioPath: String
     let categories: [Category]
 
     struct Category: Encodable { let id: String; let name: String }
-    enum CodingKeys: String, CodingKey { case audioURL = "audio_url", categories }
+    enum CodingKeys: String, CodingKey { case audioPath = "audio_path", categories }
 }
 
 private enum MiaoJiInputError: LocalizedError {

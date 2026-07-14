@@ -1,0 +1,44 @@
+[
+  {
+    "attachments" : [
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "6BAB82D2-9F6A-4CAF-8E67-81C71A248C8D",
+        "deviceName" : "iPhone 17 Pro Max",
+        "exportedFileName" : "04-settings-zh-CN.png",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "04-设置-同步与隐私_0_99357E56-2D28-4CE2-B128-CB9290E4629F.png",
+        "timestamp" : 1784022936.53
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "6BAB82D2-9F6A-4CAF-8E67-81C71A248C8D",
+        "deviceName" : "iPhone 17 Pro Max",
+        "exportedFileName" : "03-history-zh-CN.png",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "03-历史-账目时间线_0_9C7C5DFF-4D48-4E29-A883-11216595626F.png",
+        "timestamp" : 1784022933.645
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "6BAB82D2-9F6A-4CAF-8E67-81C71A248C8D",
+        "deviceName" : "iPhone 17 Pro Max",
+        "exportedFileName" : "02-statistics-zh-CN.png",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "02-统计-消费趋势_0_91D58FC6-DA26-4711-A541-9A604CC472F8.png",
+        "timestamp" : 1784022930.89
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "6BAB82D2-9F6A-4CAF-8E67-81C71A248C8D",
+        "deviceName" : "iPhone 17 Pro Max",
+        "exportedFileName" : "01-home-zh-CN.png",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "01-首页-语音与手动记账_0_10831666-5BE0-4402-B03E-9E9353160A94.png",
+        "timestamp" : 1784022927.548
+      }
+    ],
+    "testIdentifier" : "MiaoJiAccoutUITests/testCaptureAppStoreScreenshots()",
+    "testIdentifierURL" : "test://com.apple.xcode/MiaoJiAccout/MiaoJiAccoutUITests/MiaoJiAccoutUITests/testCaptureAppStoreScreenshots"
+  }
+]

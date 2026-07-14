@@ -103,4 +103,177 @@ struct MiaoJiAccoutTests {
         #expect(record.recordType == .income)
     }
 
+    @Test @MainActor func loggingInAgainRestoresExistingSupabaseSnapshot() async throws {
+        let suiteName = "MiaoJiAccoutTests.\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let category = ExpenseCategory(name: "餐饮", icon: "fork.knife", colorIndex: 0)
+        let cloudRecord = ExpenseRecord(
+            amount: 36,
+            title: "云端早餐",
+            note: "",
+            categoryID: category.id,
+            date: Date(timeIntervalSince1970: 1_000)
+        )
+        let cloudData = StoredData(
+            records: [cloudRecord],
+            categories: [category],
+            currency: .cny,
+            voiceRecognition: true,
+            budgetReminder: false,
+            monthlyBudget: 4_000,
+            updatedAt: Date(timeIntervalSince1970: 2_000)
+        )
+        // Simulate a newer local cache surviving an app restart.
+        do {
+            let previousStore = AppStore(defaults: defaults)
+            previousStore.monthlyBudget = 9_999
+        }
+
+        let syncService = FakeSupabaseSyncService(snapshot: cloudData)
+        let store = AppStore(defaults: defaults, syncService: syncService)
+        try await store.verifyCloudLoginCode(email: "user@example.com", code: "123456")
+
+        #expect(store.records == [cloudRecord])
+        #expect(store.monthlyBudget == 4_000)
+        #expect(syncService.uploadedSnapshots.isEmpty)
+        #expect(syncService.didRecordPrivacyConsent)
+    }
+
+    @Test @MainActor func restartingWithRestoredSessionPrefersSyncedCloudSnapshot() async throws {
+        let suiteName = "MiaoJiAccoutTests.\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let category = ExpenseCategory(name: "交通", icon: "tram.fill", colorIndex: 1)
+        let cloudRecord = ExpenseRecord(
+            amount: 12,
+            title: "云端地铁",
+            note: "",
+            categoryID: category.id,
+            date: Date(timeIntervalSince1970: 1_000)
+        )
+        let cloudData = StoredData(
+            records: [cloudRecord],
+            categories: [category],
+            currency: .cny,
+            voiceRecognition: true,
+            budgetReminder: false,
+            monthlyBudget: 4_000,
+            updatedAt: Date(timeIntervalSince1970: 2_000)
+        )
+        do {
+            let previousStore = AppStore(defaults: defaults)
+            previousStore.monthlyBudget = 9_999
+        }
+
+        let syncService = FakeSupabaseSyncService(
+            snapshot: cloudData,
+            restoredEmail: "user@example.com"
+        )
+        let store = AppStore(defaults: defaults, syncService: syncService)
+        for _ in 0..<100 {
+            if case .synced = store.cloudSyncState { break }
+            await Task.yield()
+        }
+
+        #expect(store.records == [cloudRecord])
+        #expect(store.monthlyBudget == 4_000)
+        #expect(syncService.uploadedSnapshots.isEmpty)
+    }
+
+    @Test @MainActor func restartingWithPendingLocalChangesUploadsLocalSnapshot() async throws {
+        let suiteName = "MiaoJiAccoutTests.\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let category = ExpenseCategory(name: "购物", icon: "bag.fill", colorIndex: 2)
+        let localRecord = ExpenseRecord(
+            amount: 88,
+            title: "待上传账目",
+            note: "",
+            categoryID: category.id
+        )
+        do {
+            let previousStore = AppStore(defaults: defaults)
+            previousStore.categories = [category]
+            previousStore.records = [localRecord]
+        }
+        defaults.set(true, forKey: "MiaoJiAccout.pendingCloudChanges.v1")
+
+        let emptyCloudData = StoredData(
+            records: [],
+            categories: [category],
+            currency: .cny,
+            voiceRecognition: true,
+            budgetReminder: false,
+            monthlyBudget: 4_000,
+            updatedAt: .now
+        )
+        let syncService = FakeSupabaseSyncService(
+            snapshot: emptyCloudData,
+            restoredEmail: "user@example.com"
+        )
+        let store = AppStore(defaults: defaults, syncService: syncService)
+        for _ in 0..<100 {
+            if case .synced = store.cloudSyncState { break }
+            await Task.yield()
+        }
+
+        #expect(store.records == [localRecord])
+        #expect(syncService.uploadedSnapshots.last?.records == [localRecord])
+        #expect(defaults.bool(forKey: "MiaoJiAccout.pendingCloudChanges.v1") == false)
+    }
+
+    @Test @MainActor func deletingAccountClearsCloudIdentityAndLocalLedger() async throws {
+        let suiteName = "MiaoJiAccoutTests.\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let syncService = FakeSupabaseSyncService(snapshot: nil)
+        let store = AppStore(defaults: defaults, syncService: syncService)
+        let categoryID = try #require(store.categories.first?.id)
+        store.records = [
+            ExpenseRecord(amount: 20, title: "待删除记录", note: "", categoryID: categoryID)
+        ]
+        try await store.verifyCloudLoginCode(email: "user@example.com", code: "123456")
+
+        try await store.deleteCloudAccountAndLocalData()
+
+        #expect(syncService.didDeleteAccount)
+        #expect(store.cloudAccountEmail == nil)
+        #expect(store.records.isEmpty)
+        #expect(defaults.data(forKey: "MiaoJiAccout.localData.v1") == nil)
+        #expect(defaults.bool(forKey: "MiaoJiAccout.pendingCloudChanges.v1") == false)
+    }
+
+}
+
+@MainActor
+private final class FakeSupabaseSyncService: SupabaseSyncServicing {
+    var snapshot: StoredData?
+    var restoredEmail: String?
+    private(set) var uploadedSnapshots: [StoredData] = []
+    private(set) var didDeleteAccount = false
+    private(set) var didRecordPrivacyConsent = false
+
+    init(snapshot: StoredData?, restoredEmail: String? = nil) {
+        self.snapshot = snapshot
+        self.restoredEmail = restoredEmail
+    }
+
+    func restoreSession() async throws -> String? { restoredEmail }
+    func requestEmailOTP(email: String) async throws {}
+    func verifyEmailOTP(email: String, token: String) async throws -> String { email }
+    func signInWithPassword(email: String, password: String) async throws -> String { email }
+    func recordPrivacyConsent() async throws { didRecordPrivacyConsent = true }
+    func fetchSnapshot() async throws -> StoredData? { snapshot }
+    func uploadSnapshot(_ data: StoredData) async throws { uploadedSnapshots.append(data) }
+    func accessToken() async throws -> String { "test-access-token" }
+    func deleteAccount() async throws {
+        didDeleteAccount = true
+        restoredEmail = nil
+    }
+    func signOut() async {}
 }

@@ -102,9 +102,9 @@ cd miaoji
 
 ### 2. 配置 Supabase
 
-在 Supabase SQL Editor 中执行 [`supabase/migrations/202607130001_create_account_snapshots.sql`](supabase/migrations/202607130001_create_account_snapshots.sql)，再按照 [`supabase/README.md`](supabase/README.md) 配置邮箱验证码模板。
+在 Supabase SQL Editor 中按文件名顺序执行 [`supabase/migrations`](supabase/migrations) 内的全部 SQL 文件，再按照 [`supabase/README.md`](supabase/README.md) 配置邮箱验证码模板。
 
-当前语音链路需要名为 `user-audio` 的**公开** Storage Bucket。开发阶段请仅使用非敏感测试录音，并在生产部署前制定合适的保留与清理策略。
+语音链路使用名为 `user-audio` 的**私有** Storage Bucket。API 会创建短期签名 URL，并在解析后删除录音；生产环境还应配置 24 小时生命周期清理，兜底处理被中断的请求。
 
 ### 3. 配置 iOS 客户端
 
@@ -154,6 +154,7 @@ xcodebuild test \
 - 语音录音会上传至配置的 Supabase Storage，并发送给配置的 DashScope 模型进行解析。
 - Flask API 需要 Supabase `service_role` key，该密钥只能保存在可信服务端。
 - 漏洞报告方式请查看 [`SECURITY.md`](SECURITY.md)，RLS 配置请查看 [`supabase/README.md`](supabase/README.md)。
+- 创建 App Store Archive 前，请逐项执行 [`docs/app-store-release-checklist.md`](docs/app-store-release-checklist.md)。
 
 ## 参与贡献
 
@@ -166,4 +167,4 @@ xcodebuild test \
 ## 联系方式
 
 - 仓库：[github.com/KapiYue/miaoji](https://github.com/KapiYue/miaoji)
-- 维护者：[ellnazhang520@gmail.com](mailto:ellnazhang520@gmail.com)
+- 维护者：[zdjoey@126.com](mailto:zdjoey@126.com)

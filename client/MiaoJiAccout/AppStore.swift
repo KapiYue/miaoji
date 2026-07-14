@@ -60,6 +60,11 @@ enum CloudSyncState: Equatable {
     case failed(String)
 }
 
+private enum CloudReconciliationPolicy: Equatable {
+    case cloud
+    case local
+}
+
 @MainActor
 final class AppStore: ObservableObject {
     @Published var records: [ExpenseRecord] = [] { didSet { save() } }
@@ -72,19 +77,34 @@ final class AppStore: ObservableObject {
     @Published private(set) var cloudSyncState: CloudSyncState
 
     private let key = "MiaoJiAccout.localData.v1"
+    private let pendingCloudChangesKey = "MiaoJiAccout.pendingCloudChanges.v1"
     private let defaults: UserDefaults
-    private let syncService: SupabaseSyncService?
+    private let syncService: (any SupabaseSyncServicing)?
+    private let isDemoMode: Bool
     private var isLoading = true
     private var isApplyingCloudData = false
     private var hasLocalData = false
+    private var hasPendingCloudChanges: Bool
     private var localUpdatedAt = Date.distantPast
     private var cloudUploadTask: Task<Void, Never>?
 
-    init(defaults: UserDefaults = .standard, syncService: SupabaseSyncService? = nil) {
+    init(
+        defaults: UserDefaults = .standard,
+        syncService: (any SupabaseSyncServicing)? = nil,
+        demoData: Bool = false
+    ) {
         self.defaults = defaults
         self.syncService = syncService
+        isDemoMode = demoData
+        hasPendingCloudChanges = defaults.bool(forKey: pendingCloudChangesKey)
         cloudSyncState = syncService == nil ? .notConfigured : .signedOut
-        if let data = defaults.data(forKey: key), let value = try? JSONDecoder().decode(StoredData.self, from: data) {
+        if demoData {
+            localUpdatedAt = .now
+            categories = Self.defaultCategories
+            records = Self.demoRecords(categories: categories)
+            currency = .cny
+            monthlyBudget = 6_000
+        } else if let data = defaults.data(forKey: key), let value = try? JSONDecoder().decode(StoredData.self, from: data) {
             hasLocalData = true
             localUpdatedAt = value.updatedAt ?? .distantPast
             records = value.records
@@ -95,27 +115,20 @@ final class AppStore: ObservableObject {
             monthlyBudget = value.monthlyBudget ?? 4000
         } else {
             localUpdatedAt = .now
-            categories = [
-                ExpenseCategory(name: "餐饮", icon: "fork.knife", colorIndex: 0, budget: 1200),
-                ExpenseCategory(name: "交通", icon: "tram.fill", colorIndex: 1, budget: 500),
-                ExpenseCategory(name: "购物", icon: "bag.fill", colorIndex: 2, budget: 1000),
-                ExpenseCategory(name: "医疗", icon: "cross.case.fill", colorIndex: 4),
-                ExpenseCategory(name: "娱乐", icon: "gamecontroller.fill", colorIndex: 3),
-                ExpenseCategory(name: "其他", icon: "ellipsis.circle.fill", colorIndex: 5)
-            ]
+            categories = Self.defaultCategories
         }
         isLoading = false
-        persistLocalData()
+        if hasLocalData { persistLocalData() }
         if syncService != nil {
             Task { await restoreCloudSession() }
         }
     }
 
-    var isCloudConfigured: Bool { syncService != nil }
+    var isCloudConfigured: Bool { syncService != nil || isDemoMode }
     var isCloudSignedIn: Bool { cloudAccountEmail != nil }
     var cloudSyncDescription: String {
         switch cloudSyncState {
-        case .notConfigured: "未配置 Supabase"
+        case .notConfigured: isDemoMode ? "登录后可开启云同步" : "未配置 Supabase"
         case .signedOut: "登录后可跨设备查看账本"
         case .syncing: "正在同步…"
         case .synced(let date): "已同步 · \(formatDate(date, dateStyle: .none, timeStyle: .short))"
@@ -136,7 +149,39 @@ final class AppStore: ObservableObject {
                 email: email.trimmingCharacters(in: .whitespacesAndNewlines),
                 token: code.trimmingCharacters(in: .whitespacesAndNewlines)
             )
-            try await reconcileWithCloud()
+            do {
+                try await syncService.recordPrivacyConsent()
+            } catch {
+                await syncService.signOut()
+                cloudAccountEmail = nil
+                throw error
+            }
+            // An explicit login establishes Supabase as the source of truth for
+            // an existing account. This prevents a freshly seeded or stale local
+            // cache from overwriting the account's snapshot after a reinstall.
+            try await reconcileWithCloud(policy: .cloud)
+        } catch {
+            cloudSyncState = .failed(error.localizedDescription)
+            throw error
+        }
+    }
+
+    func signInToCloud(email: String, password: String) async throws {
+        guard let syncService else { throw SupabaseSyncError.notConfigured }
+        cloudSyncState = .syncing
+        do {
+            cloudAccountEmail = try await syncService.signInWithPassword(
+                email: email.trimmingCharacters(in: .whitespacesAndNewlines),
+                password: password
+            )
+            do {
+                try await syncService.recordPrivacyConsent()
+            } catch {
+                await syncService.signOut()
+                cloudAccountEmail = nil
+                throw error
+            }
+            try await reconcileWithCloud(policy: .cloud)
         } catch {
             cloudSyncState = .failed(error.localizedDescription)
             throw error
@@ -148,7 +193,7 @@ final class AppStore: ObservableObject {
         guard isCloudSignedIn else { throw SupabaseSyncError.notSignedIn }
         cloudUploadTask?.cancel()
         do {
-            try await reconcileWithCloud()
+            try await reconcileWithCloud(policy: hasPendingCloudChanges ? .local : .cloud)
         } catch {
             cloudSyncState = .failed(error.localizedDescription)
             throw error
@@ -158,7 +203,7 @@ final class AppStore: ObservableObject {
     func refreshFromCloud() async {
         guard isCloudSignedIn else { return }
         do {
-            try await reconcileWithCloud()
+            try await reconcileWithCloud(policy: hasPendingCloudChanges ? .local : .cloud)
         } catch {
             cloudSyncState = .failed(error.localizedDescription)
         }
@@ -169,6 +214,28 @@ final class AppStore: ObservableObject {
         await syncService?.signOut()
         cloudAccountEmail = nil
         cloudSyncState = syncService == nil ? .notConfigured : .signedOut
+    }
+
+    func voiceAuthorizationToken() async throws -> String {
+        guard let syncService else { throw SupabaseSyncError.notConfigured }
+        guard isCloudSignedIn else { throw SupabaseSyncError.notSignedIn }
+        return try await syncService.accessToken()
+    }
+
+    func deleteCloudAccountAndLocalData() async throws {
+        guard let syncService else { throw SupabaseSyncError.notConfigured }
+        guard isCloudSignedIn else { throw SupabaseSyncError.notSignedIn }
+        cloudUploadTask?.cancel()
+        cloudSyncState = .syncing
+        do {
+            try await syncService.deleteAccount()
+            clearLocalData()
+            cloudAccountEmail = nil
+            cloudSyncState = .signedOut
+        } catch {
+            cloudSyncState = .failed(error.localizedDescription)
+            throw error
+        }
     }
 
     func category(for id: UUID) -> ExpenseCategory? { categories.first { $0.id == id } }
@@ -246,11 +313,13 @@ final class AppStore: ObservableObject {
 
     private func save() {
         guard !isLoading else { return }
+        guard !isDemoMode else { return }
         guard !isApplyingCloudData else { return }
         hasLocalData = true
         localUpdatedAt = .now
         persistLocalData()
         guard isCloudSignedIn else { return }
+        setHasPendingCloudChanges(true)
         scheduleCloudUpload()
     }
 
@@ -274,19 +343,20 @@ final class AppStore: ObservableObject {
                 return
             }
             cloudAccountEmail = email
-            try await reconcileWithCloud()
+            // A completed previous sync makes Supabase authoritative after an
+            // app restart. Only a known unsent local edit may remain local-first.
+            try await reconcileWithCloud(policy: hasPendingCloudChanges ? .local : .cloud)
         } catch {
             cloudAccountEmail = nil
             cloudSyncState = .failed(error.localizedDescription)
         }
     }
 
-    private func reconcileWithCloud() async throws {
+    private func reconcileWithCloud(policy: CloudReconciliationPolicy) async throws {
         guard let syncService else { throw SupabaseSyncError.notConfigured }
         cloudSyncState = .syncing
         if let cloudData = try await syncService.fetchSnapshot() {
-            let cloudUpdatedAt = cloudData.updatedAt ?? .distantPast
-            if !hasLocalData || cloudUpdatedAt >= localUpdatedAt {
+            if policy == .cloud || !hasLocalData {
                 applyCloudData(cloudData)
             } else {
                 try await syncService.uploadSnapshot(storedData)
@@ -294,6 +364,7 @@ final class AppStore: ObservableObject {
         } else {
             try await syncService.uploadSnapshot(storedData)
         }
+        setHasPendingCloudChanges(false)
         cloudSyncState = .synced(.now)
     }
 
@@ -325,6 +396,7 @@ final class AppStore: ObservableObject {
                 self.cloudSyncState = .syncing
                 try await syncService.uploadSnapshot(self.storedData)
                 guard !Task.isCancelled else { return }
+                self.setHasPendingCloudChanges(false)
                 self.cloudSyncState = .synced(.now)
             } catch is CancellationError {
                 return
@@ -333,5 +405,67 @@ final class AppStore: ObservableObject {
                 self.cloudSyncState = .failed(error.localizedDescription)
             }
         }
+    }
+
+    private func setHasPendingCloudChanges(_ value: Bool) {
+        hasPendingCloudChanges = value
+        defaults.set(value, forKey: pendingCloudChangesKey)
+    }
+
+    private func clearLocalData() {
+        isApplyingCloudData = true
+        records = []
+        categories = Self.defaultCategories
+        currency = .cny
+        voiceRecognition = true
+        budgetReminder = false
+        monthlyBudget = 4_000
+        isApplyingCloudData = false
+        hasLocalData = false
+        localUpdatedAt = .now
+        defaults.removeObject(forKey: key)
+        setHasPendingCloudChanges(false)
+    }
+
+    private static var defaultCategories: [ExpenseCategory] {
+        [
+            ExpenseCategory(name: "餐饮", icon: "fork.knife", colorIndex: 0, budget: 1200),
+            ExpenseCategory(name: "交通", icon: "tram.fill", colorIndex: 1, budget: 500),
+            ExpenseCategory(name: "购物", icon: "bag.fill", colorIndex: 2, budget: 1000),
+            ExpenseCategory(name: "医疗", icon: "cross.case.fill", colorIndex: 4),
+            ExpenseCategory(name: "娱乐", icon: "gamecontroller.fill", colorIndex: 3),
+            ExpenseCategory(name: "其他", icon: "ellipsis.circle.fill", colorIndex: 5)
+        ]
+    }
+
+    private static func demoRecords(categories: [ExpenseCategory], now: Date = .now) -> [ExpenseRecord] {
+        let calendar = Calendar(identifier: .gregorian)
+        func categoryID(_ name: String) -> UUID {
+            categories.first(where: { $0.name == name })?.id ?? categories[0].id
+        }
+        func date(monthOffset: Int = 0, day: Int, hour: Int) -> Date {
+            let shifted = calendar.date(byAdding: .month, value: monthOffset, to: now) ?? now
+            let parts = calendar.dateComponents([.year, .month], from: shifted)
+            return calendar.date(
+                from: DateComponents(year: parts.year, month: parts.month, day: day, hour: hour)
+            ) ?? shifted
+        }
+        let today = max(1, calendar.component(.day, from: now))
+        let yesterday = max(1, today - 1)
+        let earlier = max(1, today - 4)
+        return [
+            ExpenseRecord(amount: 8_500, title: "本月工资", note: "演示收入", categoryID: categoryID("其他"), date: date(day: 1, hour: 9), type: .income),
+            ExpenseRecord(amount: 36, title: "早餐与咖啡", note: "工作日前的能量补给", categoryID: categoryID("餐饮"), date: date(day: today, hour: 8)),
+            ExpenseRecord(amount: 45, title: "午餐", note: "和同事一起", categoryID: categoryID("餐饮"), date: date(day: today, hour: 12)),
+            ExpenseRecord(amount: 28, title: "打车", note: "雨天通勤", categoryID: categoryID("交通"), date: date(day: today, hour: 18)),
+            ExpenseRecord(amount: 16, title: "地铁", note: "往返通勤", categoryID: categoryID("交通"), date: date(day: yesterday, hour: 19)),
+            ExpenseRecord(amount: 68, title: "晚餐", note: "简餐", categoryID: categoryID("餐饮"), date: date(day: yesterday, hour: 20)),
+            ExpenseRecord(amount: 299, title: "生活用品", note: "月度补货", categoryID: categoryID("购物"), date: date(day: earlier, hour: 16)),
+            ExpenseRecord(amount: 58, title: "电影", note: "周末放松", categoryID: categoryID("娱乐"), date: date(day: max(1, earlier - 1), hour: 20)),
+            ExpenseRecord(amount: 86, title: "常用药品", note: "家庭药箱补充", categoryID: categoryID("医疗"), date: date(day: max(1, earlier - 2), hour: 11)),
+            ExpenseRecord(amount: 180, title: "上月聚餐", note: "朋友聚会", categoryID: categoryID("餐饮"), date: date(monthOffset: -1, day: 18, hour: 19)),
+            ExpenseRecord(amount: 420, title: "上月购物", note: "演示数据", categoryID: categoryID("购物"), date: date(monthOffset: -1, day: 12, hour: 15)),
+            ExpenseRecord(amount: 92, title: "上月交通", note: "演示数据", categoryID: categoryID("交通"), date: date(monthOffset: -1, day: 8, hour: 18))
+        ]
     }
 }

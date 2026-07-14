@@ -34,6 +34,41 @@ final class MiaoJiAccoutUITests: XCTestCase {
     }
 
     @MainActor
+    func testCaptureAppStoreScreenshots() throws {
+        let app = XCUIApplication()
+        app.launchArguments = [
+            "--screenshot-demo-data",
+            "-AppleLanguages", "(zh-Hans)",
+            "-AppleLocale", "zh_CN"
+        ]
+        app.launch()
+
+        capture(app, name: "01-首页-语音与手动记账")
+        for (tab, name) in [
+            ("统计", "02-统计-消费趋势"),
+            ("历史", "03-历史-账目时间线")
+        ] {
+            let button = app.buttons[tab]
+            XCTAssertTrue(button.waitForExistence(timeout: 3))
+            button.tap()
+            capture(app, name: name)
+        }
+
+        let settingsButton = app.buttons["设置"]
+        XCTAssertTrue(settingsButton.waitForExistence(timeout: 3))
+        settingsButton.tap()
+        capture(app, name: "04-设置-预算与分类")
+    }
+
+    private func capture(_ app: XCUIApplication, name: String) {
+        RunLoop.current.run(until: Date().addingTimeInterval(0.8))
+        let attachment = XCTAttachment(screenshot: app.screenshot())
+        attachment.name = name
+        attachment.lifetime = .keepAlways
+        add(attachment)
+    }
+
+    @MainActor
     func testLaunchPerformance() throws {
         // This measures how long it takes to launch your application.
         measure(metrics: [XCTApplicationLaunchMetric()]) {

@@ -38,9 +38,16 @@ final class MiaoJiInputService: ObservableObject {
     init(apiBaseURL: URL? = nil) {
         let resolvedAPIBaseURL = apiBaseURL ?? Self.configuredAPIBaseURL
         self.apiBaseURL = resolvedAPIBaseURL
-        if resolvedAPIBaseURL?.isLocalDevelopmentServer == true {
-            let configuration = URLSessionConfiguration.ephemeral
-            configuration.connectionProxyDictionary = [:]
+        if let resolvedAPIBaseURL {
+            let configuration = resolvedAPIBaseURL.isLocalDevelopmentServer
+                ? URLSessionConfiguration.ephemeral
+                : URLSessionConfiguration.default
+            configuration.waitsForConnectivity = true
+            configuration.timeoutIntervalForResource = 150
+            if resolvedAPIBaseURL.isLocalDevelopmentServer {
+                // A system or development proxy should not intercept private LAN traffic.
+                configuration.connectionProxyDictionary = [:]
+            }
             self.urlSession = URLSession(configuration: configuration)
         } else {
             self.urlSession = .shared
@@ -321,11 +328,18 @@ final class MiaoJiInputService: ObservableObject {
             ?? HTTPURLResponse.localizedString(forStatusCode: statusCode)
     }
 
-    private static func failureMessage(for error: Error, action: String, apiBaseURL: URL?) -> String {
-        if let urlError = error as? URLError,
-           [.cannotConnectToHost, .cannotFindHost, .networkConnectionLost, .notConnectedToInternet].contains(urlError.code) {
-            let endpoint = apiBaseURL?.absoluteString ?? "服务端地址"
-            return "无法连接记账服务（\(endpoint)）。请确认后端已启动，并检查网络后重试。"
+    static func failureMessage(for error: Error, action: String, apiBaseURL: URL?) -> String {
+        if let urlError = error as? URLError {
+            if apiBaseURL?.isLocalDevelopmentServer == true,
+               [.cannotConnectToHost, .cannotFindHost, .networkConnectionLost, .notConnectedToInternet, .timedOut]
+                .contains(urlError.code) {
+                return "无法访问局域网记账服务。请确认手机与电脑连接同一 Wi-Fi，并在 iPhone“设置 > 隐私与安全性 > 本地网络”中允许“妙记”；仍失败时请检查 macOS 防火墙。"
+            }
+            if [.cannotConnectToHost, .cannotFindHost, .dnsLookupFailed, .networkConnectionLost,
+                .notConnectedToInternet, .timedOut, .secureConnectionFailed]
+                .contains(urlError.code) {
+                return "暂时无法连接语音记账服务。请检查网络、VPN 或代理设置后重试。"
+            }
         }
         return "\(action)失败：\(error.localizedDescription)"
     }
@@ -340,8 +354,12 @@ final class MiaoJiInputService: ObservableObject {
 #else
         if let value = Bundle.main.object(forInfoDictionaryKey: "MIAOJI_API_BASE_URL") as? String,
            let url = URL(string: value.trimmingCharacters(in: .whitespacesAndNewlines)),
-           url.scheme?.lowercased() == "https",
            url.host != nil {
+#if DEBUG
+            guard url.scheme?.lowercased() == "https" || url.isLocalDevelopmentServer else { return nil }
+#else
+            guard url.scheme?.lowercased() == "https" else { return nil }
+#endif
             return url
         }
         return nil

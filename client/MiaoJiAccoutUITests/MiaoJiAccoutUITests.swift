@@ -57,7 +57,7 @@ final class MiaoJiAccoutUITests: XCTestCase {
         let settingsButton = app.buttons["设置"]
         XCTAssertTrue(settingsButton.waitForExistence(timeout: 3))
         settingsButton.tap()
-        capture(app, name: "04-设置-预算与分类")
+        capture(app, name: "04-设置-同步与隐私")
     }
 
     private func capture(_ app: XCUIApplication, name: String) {

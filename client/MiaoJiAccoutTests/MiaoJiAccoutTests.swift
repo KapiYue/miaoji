@@ -20,6 +20,29 @@ struct MiaoJiAccoutTests {
         #expect(EmailOTPCode.normalized("00 147-955") == "00147955")
     }
 
+    @Test @MainActor func cloudNetworkErrorsUseActionableChineseMessages() {
+        #expect(SupabaseSyncError.networkUnavailable.errorDescription?.contains("当前网络不可用") == true)
+        #expect(SupabaseSyncError.requestTimedOut.errorDescription?.contains("超时") == true)
+        #expect(SupabaseSyncError.cannotReachServer.errorDescription?.contains("VPN") == true)
+        #expect(SupabaseSyncService.localizedServerMessage(
+            code: "email_address_not_authorized",
+            fallback: "Email address not authorized",
+            statusCode: 422
+        ).contains("不能接收验证码"))
+    }
+
+    @Test @MainActor func localVoiceServerErrorExplainsLocalNetworkPermission() {
+        let message = MiaoJiInputService.failureMessage(
+            for: URLError(.notConnectedToInternet),
+            action: "上传",
+            apiBaseURL: URL(string: "http://192.168.5.109:8000")
+        )
+
+        #expect(message.contains("本地网络"))
+        #expect(message.contains("同一 Wi-Fi"))
+        #expect(message.contains("macOS 防火墙"))
+    }
+
     @Test @MainActor func aiParsedExpenseDecodesServerPayload() throws {
         let categoryID = UUID()
         let payload = """

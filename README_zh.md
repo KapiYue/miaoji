@@ -32,10 +32,10 @@
 
 <table>
   <tr>
-    <td align="center"><img alt="妙记首页" src="docs/assets/miaoji-home-dark.png" width="220"></td>
-    <td align="center"><img alt="妙记统计页" src="docs/assets/miaoji-analytics-dark.png" width="220"></td>
-    <td align="center"><img alt="妙记历史页" src="docs/assets/miaoji-history-dark.png" width="220"></td>
-    <td align="center"><img alt="妙记设置页" src="docs/assets/miaoji-settings-dark.png" width="220"></td>
+    <td align="center"><img alt="妙记首页" src="docs/assets/app-store-screenshots/01-home-zh-CN.png" width="220"></td>
+    <td align="center"><img alt="妙记统计页" src="docs/assets/app-store-screenshots/02-statistics-zh-CN.png" width="220"></td>
+    <td align="center"><img alt="妙记历史页" src="docs/assets/app-store-screenshots/03-history-zh-CN.png" width="220"></td>
+    <td align="center"><img alt="妙记设置页" src="docs/assets/app-store-screenshots/04-settings-zh-CN.png" width="220"></td>
   </tr>
   <tr>
     <td align="center">快速录入</td>
@@ -122,9 +122,9 @@ SUPABASE_PUBLISHABLE_KEY = YOUR_PUBLISHABLE_KEY
 
 ```bash
 cd server
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
+python3 -m venv venv
+source venv/bin/activate
+python -m pip install -r requirements.txt
 cp .env.example .env
 python -m flask --app app run --host 0.0.0.0 --port 8000
 ```

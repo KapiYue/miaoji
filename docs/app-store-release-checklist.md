@@ -26,10 +26,11 @@
 1. 按 `docs/supabase-migration-guide.md` 在生产 Supabase 项目依次执行并验证三份 SQL；生产写入前先确认项目和备份。
 2. 确认 `user-audio` Bucket 为 **Private**、上限 25 MB，并配置额外任务清理 24 小时前对象。
 3. 按 `server/Dockerfile` 部署 API，将 `SUPABASE_URL`、`SUPABASE_SECRET_KEY`、`DASHSCOPE_API_KEY` 和 `DASHSCOPE_MODEL` 放入平台 Secret 管理。`SUPABASE_SECRET_KEY` 必须使用仅服务端保存的 `sb_secret_...` Key。
-4. 配置公网域名、TLS、`/healthz` 健康检查、每账号/每 IP 限流、告警，以及不记录录音/令牌正文的日志策略。
-5. 将 `client/MiaoJiConfig.xcconfig` 的 API 地址换成生产 HTTPS 域名。客户端只能保留 Supabase Publishable/anon key。
-6. 在真机验证验证码、密码登录、语音解析、失败重试、退出和永久删除账号。
-7. 在 Supabase 创建两个已确认邮箱且设置固定密码的审核账号，放入少量虚构账目。可分别运行 `server/venv/bin/python server/scripts/manage_review_user.py <审核邮箱>`，密码仅在本机终端隐藏输入；凭据只填 App Store Connect，不提交到 Git。
+4. 在 Supabase Auth → SMTP Settings 配置自有 SMTP 和发信域名；默认邮件服务仅向项目团队成员邮箱发信且限额极低，不能用于用户验证码或 App Store 审核。
+5. 配置公网域名、TLS、`/healthz` 健康检查、每账号/每 IP 限流、告警，以及不记录录音/令牌正文的日志策略。
+6. 将 `client/MiaoJiConfig.xcconfig` 的 API 地址换成生产 HTTPS 域名。客户端只能保留 Supabase Publishable/anon key。
+7. 在真机验证验证码、密码登录、语音解析、失败重试、退出和永久删除账号。
+8. 在 Supabase 创建两个已确认邮箱且设置固定密码的审核账号，放入少量虚构账目。可分别运行 `server/venv/bin/python server/scripts/manage_review_user.py <审核邮箱>`，密码仅在本机终端隐藏输入；凭据只填 App Store Connect，不提交到 Git。
 
 ## 三、隐私、协议和合规
 
@@ -52,7 +53,7 @@
 
 1. 使用 `docs/app-store-metadata-zh-CN.md` 准备简体中文描述、关键词、宣传文本、支持 URL、隐私政策 URL、版权和更新说明。
 2. 当前 Target 已改为仅 iPhone。按 `docs/app-store-screenshot-guide.md` 在 iPhone 17 Pro Max 生成简体中文截图；首发不需要 iPad 截图。Apple 允许界面一致时上传所需的最高分辨率截图并自动缩放：[Screenshots](https://developer.apple.com/help/app-store-connect/manage-app-information/upload-app-previews-and-screenshots/)。
-3. 截图覆盖首页、统计、历史和设置；内置截图启动参数只会加载虚构账目，不连接 Supabase，也不会污染普通用户数据。
+3. 截图覆盖首页、统计、历史和设置；内置截图启动参数只会加载虚构账目，不连接云同步服务，也不会污染普通用户数据。
 4. 名称、截图和描述中不要使用“专业版”等未实际提供的付费权益文案。
 
 ## 六、审核信息
@@ -65,10 +66,10 @@
 审核测试账号：<固定邮箱>
 密码：<固定密码>
 
-测试语音：设置 → Supabase 云同步 → 登录并开启云同步 → 邮箱密码；
+测试语音：设置 → 云同步 → 登录并开启云同步 → 邮箱密码；
 登录后回首页打开语音记账，允许麦克风，说“午餐 45 元，打车 28 元”。
 
-删除账号：设置 → Supabase 云同步 → 永久删除账号与数据。
+删除账号：设置 → 云同步 → 永久删除账号与数据。
 删除不可撤销；如审核期间执行，请使用备用账号或联系我们重建。
 ```
 

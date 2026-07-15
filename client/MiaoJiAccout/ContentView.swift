@@ -3,7 +3,6 @@ import SwiftUI
 struct ContentView: View {
     @State private var selection: AppTab = .home
     @AppStorage("isDarkMode") private var isDarkMode = false
-
     var body: some View {
         ZStack {
             AppBackground()

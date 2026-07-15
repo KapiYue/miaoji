@@ -44,16 +44,25 @@ enum SupabaseSyncError: LocalizedError {
     case notConfigured
     case notSignedIn
     case invalidResponse
+    case networkUnavailable
+    case requestTimedOut
+    case cannotReachServer
     case server(String)
 
     var errorDescription: String? {
         switch self {
         case .notConfigured:
-            "尚未配置 Supabase URL 和 Publishable Key。"
+            "尚未配置云同步服务。"
         case .notSignedIn:
             "请先登录云同步账号。"
         case .invalidResponse:
             "云端返回了无法识别的数据。"
+        case .networkUnavailable:
+            "当前网络不可用。请检查 Wi-Fi 或蜂窝网络后重试。"
+        case .requestTimedOut:
+            "连接云同步服务超时。请切换网络或稍后重试。"
+        case .cannotReachServer:
+            "暂时无法连接云同步服务。请检查网络、VPN 或代理设置后重试。"
         case .server(let message):
             message
         }
@@ -141,13 +150,14 @@ final class SupabaseSyncService: SupabaseSyncServicing {
     }
 
     private struct ServerError: Decodable {
+        let code: String?
         let message: String?
         let msg: String?
         let errorDescription: String?
         let error: String?
 
         enum CodingKeys: String, CodingKey {
-            case message, msg, error
+            case code, message, msg, error
             case errorDescription = "error_description"
         }
     }
@@ -157,9 +167,9 @@ final class SupabaseSyncService: SupabaseSyncServicing {
     private let keychain = SupabaseSessionKeychain()
     private var currentSession: Session?
 
-    init(configuration: SupabaseConfiguration, session: URLSession = .shared) {
+    init(configuration: SupabaseConfiguration, session: URLSession? = nil) {
         self.configuration = configuration
-        self.session = session
+        self.session = session ?? Self.makeSession()
     }
 
     static func configured(bundle: Bundle = .main) -> SupabaseSyncService? {
@@ -359,14 +369,58 @@ final class SupabaseSyncService: SupabaseSyncServicing {
     }
 
     private func perform(_ request: URLRequest) async throws -> Data {
-        let (data, response) = try await session.data(for: request)
+        let data: Data
+        let response: URLResponse
+        do {
+            (data, response) = try await session.data(for: request)
+        } catch let error as URLError {
+            switch error.code {
+            case .notConnectedToInternet, .networkConnectionLost, .dataNotAllowed:
+                throw SupabaseSyncError.networkUnavailable
+            case .timedOut:
+                throw SupabaseSyncError.requestTimedOut
+            case .cannotConnectToHost, .cannotFindHost, .dnsLookupFailed,
+                 .secureConnectionFailed, .serverCertificateUntrusted:
+                throw SupabaseSyncError.cannotReachServer
+            default:
+                throw error
+            }
+        }
         guard let http = response as? HTTPURLResponse else { throw SupabaseSyncError.invalidResponse }
         guard 200..<300 ~= http.statusCode else {
             let serverError = try? JSONDecoder().decode(ServerError.self, from: data)
             let message = serverError?.message ?? serverError?.msg ?? serverError?.errorDescription ?? serverError?.error
-            throw SupabaseSyncError.server(message ?? "Supabase 请求失败（HTTP \(http.statusCode)）。")
+            throw SupabaseSyncError.server(Self.localizedServerMessage(
+                code: serverError?.code,
+                fallback: message,
+                statusCode: http.statusCode
+            ))
         }
         return data
+    }
+
+    static func localizedServerMessage(code: String?, fallback: String?, statusCode: Int) -> String {
+        switch code {
+        case "email_address_not_authorized":
+            return "当前邮箱暂不能接收验证码。请联系支持人员开通邮件服务，或改用审核测试账号登录。"
+        case "over_email_send_rate_limit", "over_request_rate_limit":
+            return "验证码发送过于频繁，请稍后再试。"
+        case "email_provider_disabled":
+            return "邮箱登录服务暂未开启，请联系支持人员。"
+        case "signup_disabled":
+            return "暂不允许创建新账号，请改用已有账号登录。"
+        default:
+            return fallback ?? "云同步请求失败（HTTP \(statusCode)）。"
+        }
+    }
+
+    private static func makeSession() -> URLSession {
+        let configuration = URLSessionConfiguration.default
+        configuration.requestCachePolicy = .reloadIgnoringLocalCacheData
+        configuration.waitsForConnectivity = true
+        configuration.timeoutIntervalForRequest = 30
+        configuration.timeoutIntervalForResource = 45
+        return URLSession(configuration: configuration)
     }
 }
 

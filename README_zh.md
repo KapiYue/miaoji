@@ -29,7 +29,6 @@
 > 妙记仍在持续开发中。使用语音处理链路记录敏感财务信息前，请先审阅隐私与部署说明。
 
 ## 界面预览
-
 <table>
   <tr>
     <td align="center"><img alt="妙记首页" src="docs/assets/app-store-screenshots/01-home-zh-CN.png" width="220"></td>
@@ -167,4 +166,4 @@ xcodebuild test \
 ## 联系方式
 
 - 仓库：[github.com/KapiYue/miaoji](https://github.com/KapiYue/miaoji)
-- 维护者：[zdjoey@126.com](mailto:zdjoey@126.com)
+- 维护者：[ellnazhang520@gmail.com.](mailto:ellnazhang520@gmail.com.)

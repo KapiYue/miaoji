@@ -1,5 +1,3 @@
-
-
 # MiaoJi · 妙记
 
 A voice-first, local-first personal finance companion for iPhone and iPad.
@@ -16,11 +14,20 @@ MiaoJi turns natural Mandarin speech into structured expense entries, keeps the 
 ## Preview
 
 
-|            |                   |                    |                   |
-| ---------- | ----------------- | ------------------ | ----------------- |
-|            |                   |                    |                   |
-| Fast entry | Spending insights | Searchable history | Personal controls |
-
+<table>
+  <tr>
+    <td align="center"><img alt="妙记首页" src="docs/assets/app-store-screenshots/01-home-zh-CN.png" width="220"></td>
+    <td align="center"><img alt="妙记统计页" src="docs/assets/app-store-screenshots/02-statistics-zh-CN.png" width="220"></td>
+    <td align="center"><img alt="妙记历史页" src="docs/assets/app-store-screenshots/03-history-zh-CN.png" width="220"></td>
+    <td align="center"><img alt="妙记设置页" src="docs/assets/app-store-screenshots/04-settings-zh-CN.png" width="220"></td>
+  </tr>
+  <tr>
+    <td align="center">Fast entry</td>
+    <td align="center">Spending insights</td>
+    <td align="center">Searchable history</td>
+    <td align="center">Personal controls</td>
+  </tr>
+</table>
 
 ## Highlights
 
@@ -148,5 +155,4 @@ MiaoJi is available under the [MIT License](LICENSE).
 ## Contact
 
 - Repository: [github.com/KapiYue/miaoji](https://github.com/KapiYue/miaoji)
-- Maintainer: [zdjoey@126.com](mailto:zdjoey@126.com)
-
+- Maintainer: [ellnazhang520@gmail.com.](mailto:ellnazhang520@gmail.com.)

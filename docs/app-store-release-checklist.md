@@ -35,12 +35,12 @@
 ## 三、隐私、协议和合规
 
 1. 用真实运营主体、联系地址、适用法域、服务器地区和第三方服务条款审阅并完善 `privacy-policy.md`、`terms-of-service.md` 和 `support.md`。
-2. 将页面部署到稳定、无需登录即可访问的 HTTPS 网站。计划地址为 `miaoji.joy-codex.com`；域名转入腾讯云、ICP 备案和页面部署完成后，再写入最终配置。
+2. 将页面部署到稳定、无需登录即可访问的 HTTPS 网站。计划地址为 `miaoji.joy-coder.com`；域名购买于腾讯云，ICP 备案和页面部署完成后，再写入最终配置。
 3. App Store Connect → App Privacy 填写隐私政策 URL，并按当前代码声明：Email Address、Other Financial Info、Audio Data、User ID；用途均为 App Functionality、与账号关联、不用于 Tracking。Apple 要求同时申报第三方合作方的数据实践：[Manage app privacy](https://developer.apple.com/help/app-store-connect/manage-app-information/manage-app-privacy)、[App Privacy Details](https://developer.apple.com/app-store/app-privacy-details/)。
 4. 应用已为 `UserDefaults` 声明 CA92.1。Apple 要求 Required Reason API 带准确理由：[Required Reason APIs](https://developer.apple.com/documentation/bundleresources/describing-use-of-required-reason-api)。
 5. 应用支持创建账号，因此必须在 App 内删除整个账号及关联数据；本项目已提供入口：[Offering account deletion](https://developer.apple.com/support/offering-account-deletion-in-your-app)。
 6. `ITSAppUsesNonExemptEncryption = NO` 已设置，表示仅使用系统 HTTPS/钥匙串等豁免加密且没有自研或非豁免加密。功能变化后要重新判断：[Export compliance](https://developer.apple.com/help/app-store-connect/manage-app-information/overview-of-export-compliance/)。
-7. 如选择中国大陆商店，需要为“妙记”完成 APP 备案并取得 APP 备案号；`miaoji.joy-codex.com` 同时承载支持页面/API 时还要另行完成网站备案，只有 APP 备案不能直接开站。缺失或不匹配会导致无法在中国大陆上架：[App statuses and ICP](https://developer.apple.com/help/app-store-connect/reference/app-information/app-and-submission-statuses/)。不具备材料时先取消中国大陆可用性。
+7. 如选择中国大陆商店，需要为“妙记”完成 APP 备案并取得 APP 备案号；`miaoji.joy-coder.com` 同时承载支持页面/API 时还要另行完成网站备案，只有 APP 备案不能直接开站。缺失或不匹配会导致无法在中国大陆上架：[App statuses and ICP](https://developer.apple.com/help/app-store-connect/reference/app-information/app-and-submission-statuses/)。不具备材料时先取消中国大陆可用性。
 8. Supabase 项目位于新加坡，邮箱、账号标识、账本和语音临时文件会发生跨境传输。应用已在云登录前增加独立同意开关，并在登录后写入版本化的云端同意记录；发布前还需填写运营者实名、完成个人信息保护影响评估，并由专业人士确认适用的跨境传输条件。
 
 ## 四、创建 App Store Connect 记录

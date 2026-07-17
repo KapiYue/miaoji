@@ -128,8 +128,8 @@ final class SupabaseSyncService: SupabaseSyncServicing {
 
     private struct PrivacyConsentUpload: Encodable {
         let userID: UUID
-        let policyVersion = "2026-07-14"
-        let termsVersion = "2026-07-14"
+        let policyVersion = "2026-07-17"
+        let termsVersion = "2026-07-17"
         let crossBorderConsent = true
         let crossBorderRecipient = "Supabase Pte. Ltd (Singapore)"
         let consentedAt: String

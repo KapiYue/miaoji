@@ -166,4 +166,4 @@ xcodebuild test \
 ## 联系方式
 
 - 仓库：[github.com/KapiYue/miaoji](https://github.com/KapiYue/miaoji)
-- 维护者：[ellnazhang520@gmail.com.](mailto:ellnazhang520@gmail.com.)
+- 维护者：[zdjoey@126.com](mailto:zdjoey@126.com)

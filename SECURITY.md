@@ -11,7 +11,7 @@ MiaoJi is currently in active pre-release development. Security fixes are applie
 
 ## Reporting a vulnerability
 
-Please do not open a public issue for a suspected vulnerability. Email [ellnazhang520@gmail.com](mailto:ellnazhang520@gmail.com) with the subject `MiaoJi security report`.
+Please do not open a public issue for a suspected vulnerability. Email [zdjoey@126.com](mailto:zdjoey@126.com) with the subject `MiaoJi security report`.
 
 Include, when available:
 

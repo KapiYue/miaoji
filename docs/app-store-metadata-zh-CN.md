@@ -45,10 +45,10 @@
 
 ## URL（备案与页面部署后填写）
 
-- 支持 URL：`https://miaoji.joy-codex.com/support`
-- 隐私政策 URL：`https://miaoji.joy-codex.com/privacy`
-- 用户协议 URL：`https://miaoji.joy-codex.com/terms`
-- 营销 URL：可暂不填写，或使用 `https://miaoji.joy-codex.com/`
+- 支持 URL：`https://miaoji.joy-coder.com/support`
+- 隐私政策 URL：`https://miaoji.joy-coder.com/privacy`
+- 用户协议 URL：`https://miaoji.joy-coder.com/terms`
+- 营销 URL：可暂不填写，或使用 `https://miaoji.joy-coder.com/`
 
 正式提交前，上述页面必须无需登录即可访问，使用 HTTPS，ICP备案主体及网站展示主体与实际个人开发者一致。
 

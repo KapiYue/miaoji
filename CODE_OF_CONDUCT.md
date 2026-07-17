@@ -36,7 +36,7 @@ This Code of Conduct applies within all community spaces and when an individual 
 
 ## Enforcement
 
-Instances of abusive, harassing, or otherwise unacceptable behavior may be reported privately to [ellnazhang520@gmail.com](mailto:ellnazhang520@gmail.com). All complaints will be reviewed and investigated promptly and fairly.
+Instances of abusive, harassing, or otherwise unacceptable behavior may be reported privately to [zdjoey@126.com](mailto:zdjoey@126.com). All complaints will be reviewed and investigated promptly and fairly.
 
 Community leaders will respect the privacy and security of the reporter of any incident.
 

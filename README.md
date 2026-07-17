@@ -155,4 +155,4 @@ MiaoJi is available under the [MIT License](LICENSE).
 ## Contact
 
 - Repository: [github.com/KapiYue/miaoji](https://github.com/KapiYue/miaoji)
-- Maintainer: [ellnazhang520@gmail.com.](mailto:ellnazhang520@gmail.com.)
+- Maintainer: [zdjoey@126.com](mailto:zdjoey@126.com)

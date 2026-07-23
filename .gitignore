@@ -57,7 +57,7 @@ playground.xcworkspace
 # fastlane/test_output
 
 # ==============================
-# Static HTML prototypes (prototype / prototype_2_check / prototype_3 / prototype_4)
+# Local prototypes / design drafts
 # ==============================
 node_modules/
 dist/
@@ -67,9 +67,18 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 
-## Prototype folders themselves (draft UI, not part of the shipped app)
-prototype/
-prototype_*
+## Prototype folders at any depth (draft UI, not part of the shipped app)
+**/prototype/
+**/prototype_*/
+
+# ==============================
+# Local tool metadata
+# ==============================
+.agents/
+.codex/
+.cursor/
+.claude/
+*.code-workspace
 
 # ==============================
 # Archives
@@ -90,5 +99,31 @@ prototype_*
 *.swp
 *~
 
+# Environment files may contain credentials. Commit templates only.
+.env
+.env.*
 *.env
+*.env.*
+!.env.example
+!*.env.example
+
+# Private keys, signing identities, and provisioning profiles
+*.pem
+*.key
+*.p8
+*.p12
+*.pfx
+*.cer
+*.mobileprovision
+id_rsa
+id_rsa.*
+id_ed25519
+id_ed25519.*
+
+# Common local credential/config files
+credentials.json
+service-account*.json
+secrets.yml
+secrets.yaml
+secrets.json
 venv/

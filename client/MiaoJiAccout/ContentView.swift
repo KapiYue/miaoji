@@ -1,8 +1,25 @@
 import SwiftUI
 
 struct ContentView: View {
-    @State private var selection: AppTab = .home
+    @State private var selection: AppTab
     @AppStorage("isDarkMode") private var isDarkMode = false
+
+    init() {
+        let arguments = ProcessInfo.processInfo.arguments
+        let requestedTab: AppTab
+        if let flagIndex = arguments.firstIndex(of: "--screenshot-tab"), arguments.indices.contains(flagIndex + 1) {
+            switch arguments[flagIndex + 1] {
+            case "statistics": requestedTab = .statistics
+            case "history": requestedTab = .history
+            case "settings": requestedTab = .settings
+            default: requestedTab = .home
+            }
+        } else {
+            requestedTab = .home
+        }
+        _selection = State(initialValue: requestedTab)
+    }
+
     var body: some View {
         ZStack {
             AppBackground()

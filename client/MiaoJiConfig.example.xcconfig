@@ -1,5 +1,6 @@
 // Copy this file to MiaoJiConfig.xcconfig for local development. The copied
-// file is git-ignored. App Store archives must use a public HTTPS API URL.
+// file is git-ignored. For real-device debugging, a Mac `.local` hostname is
+// more stable than a DHCP address. App Store archives must use public HTTPS.
 MIAOJI_API_BASE_URL = https:/$()/api.example.com
 
 // Supabase publishable/anon keys are designed for clients. Never place a

@@ -6,6 +6,11 @@ if [ "${CONFIGURATION:-}" != "Release" ]; then
   exit 0
 fi
 
+if [ "${MIAOJI_TEMPORARILY_SKIP_RELEASE_VALIDATION:-}" = "YES" ]; then
+  echo "warning: App Store Release 配置检查已临时跳过；归档送审前必须移除 MIAOJI_TEMPORARILY_SKIP_RELEASE_VALIDATION。" >&2
+  exit 0
+fi
+
 fail() {
   echo "error: App Store Release 配置错误：$1" >&2
   exit 1

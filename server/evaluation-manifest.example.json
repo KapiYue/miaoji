@@ -1,0 +1,45 @@
+{
+  "timezone": "Asia/Shanghai",
+  "storage_bucket": "user-audio",
+  "categories": [
+    { "id": "food", "name": "餐饮" },
+    { "id": "transport", "name": "交通" },
+    { "id": "shopping", "name": "购物" },
+    { "id": "entertainment", "name": "娱乐" },
+    { "id": "medical", "name": "医疗" },
+    { "id": "other", "name": "其他" }
+  ],
+  "cases": [
+    {
+      "id": "ios-m4a-decimal-and-relative-date",
+      "file": "test-recordings/001.m4a",
+      "reference_date": "2026-07-27",
+      "tags": ["ios", "aac", "m4a", "decimal", "relative-date"],
+      "expected": [
+        {
+          "amount": 12.5,
+          "category_id": "food",
+          "date": "2026-07-26"
+        }
+      ]
+    },
+    {
+      "id": "private-signed-url-multiple-expenses",
+      "storage_path": "benchmark/002.m4a",
+      "reference_date": "2026-07-27",
+      "tags": ["signed-url", "multiple", "noise"],
+      "expected": [
+        {
+          "amount": 28,
+          "category_id": "transport",
+          "date": "2026-07-25"
+        },
+        {
+          "amount": 45.6,
+          "category_id": "food",
+          "date": "2026-07-25"
+        }
+      ]
+    }
+  ]
+}

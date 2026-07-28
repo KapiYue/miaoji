@@ -29,94 +29,101 @@ struct SettingsView: View {
                     }
                 }
             }
-            SettingsCard(title: "云同步", subtitle: "使用同一邮箱登录后，可在更换设备后恢复完整账本。") {
-                if !store.isCloudConfigured {
-                    HStack(spacing: 12) {
-                        Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(Palette.accent)
-                        Text("请先在 MiaoJiConfig.xcconfig 中配置云同步服务。")
-                            .font(.caption)
-                            .foregroundStyle(Palette.muted)
-                    }
-                    .softRow()
-                } else if let email = store.cloudAccountEmail {
-                    HStack(spacing: 12) {
-                        Image(systemName: "checkmark.icloud.fill")
-                            .font(.system(size: 20, weight: .semibold))
-                            .foregroundStyle(Palette.success)
-                        VStack(alignment: .leading, spacing: 3) {
-                            Text(email).font(.system(size: 14, weight: .bold)).lineLimit(1)
-                            Text(store.cloudSyncDescription).font(.caption).foregroundStyle(Palette.muted)
+            AdaptiveColumns {
+                VStack(spacing: 14) {
+                    SettingsCard(title: "云同步", subtitle: "使用同一邮箱登录后，可在更换设备后恢复完整账本。") {
+                        if !store.isCloudConfigured {
+                            HStack(spacing: 12) {
+                                Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(Palette.accent)
+                                Text("请先在 MiaoJiConfig.xcconfig 中配置云同步服务。")
+                                    .font(.caption)
+                                    .foregroundStyle(Palette.muted)
+                            }
+                            .softRow()
+                        } else if let email = store.cloudAccountEmail {
+                            HStack(spacing: 12) {
+                                Image(systemName: "checkmark.icloud.fill")
+                                    .font(.system(size: 20, weight: .semibold))
+                                    .foregroundStyle(Palette.success)
+                                VStack(alignment: .leading, spacing: 3) {
+                                    Text(email).font(.system(size: 14, weight: .bold)).lineLimit(1)
+                                    Text(store.cloudSyncDescription).font(.caption).foregroundStyle(Palette.muted)
+                                }
+                                Spacer()
+                            }
+                            .softRow()
+                            Button("立即同步到云端") {
+                                Task {
+                                    do { try await store.syncNow() }
+                                    catch { cloudActionError = error.localizedDescription }
+                                }
+                            }
+                            .buttonStyle(GradientButtonStyle())
+                            Button("退出云同步账号") { Task { await store.signOutCloudAccount() } }
+                                .buttonStyle(SoftButtonStyle(fullWidth: true))
+                            Button("永久删除账号与数据") { showDeleteAccountConfirmation = true }
+                                .buttonStyle(DangerButtonStyle())
+                                .disabled(isDeletingAccount)
+                        } else {
+                            Button("登录并开启云同步") { showCloudLogin = true }
+                                .buttonStyle(GradientButtonStyle())
                         }
-                        Spacer()
                     }
-                    .softRow()
-                    Button("立即同步到云端") {
-                        Task {
-                            do { try await store.syncNow() }
-                            catch { cloudActionError = error.localizedDescription }
-                        }
+                    SettingsCard(title: "货币", subtitle: "支持多币种和显示格式切换。") {
+                        Button { showCurrency = true } label: { HStack { Badge(text: store.currency.symbol, color: .blue); VStack(alignment: .leading, spacing: 3) { Text(store.currency.name).font(.system(size: 15, weight: .bold)); Text("\(store.currency.code) · 当前使用").font(.caption).foregroundStyle(Palette.muted) }; Spacer(); Image(systemName: "chevron.right").foregroundStyle(Palette.muted) }.softRow() }.buttonStyle(.plain)
                     }
-                    .buttonStyle(GradientButtonStyle())
-                    Button("退出云同步账号") { Task { await store.signOutCloudAccount() } }
-                        .buttonStyle(SoftButtonStyle(fullWidth: true))
-                    Button("永久删除账号与数据") { showDeleteAccountConfirmation = true }
-                        .buttonStyle(DangerButtonStyle())
-                        .disabled(isDeletingAccount)
-                } else {
-                    Button("登录并开启云同步") { showCloudLogin = true }
-                        .buttonStyle(GradientButtonStyle())
-                }
-            }
-            SettingsCard(title: "货币", subtitle: "支持多币种和显示格式切换。") {
-                Button { showCurrency = true } label: { HStack { Badge(text: store.currency.symbol, color: .blue); VStack(alignment: .leading, spacing: 3) { Text(store.currency.name).font(.system(size: 15, weight: .bold)); Text("\(store.currency.code) · 当前使用").font(.caption).foregroundStyle(Palette.muted) }; Spacer(); Image(systemName: "chevron.right").foregroundStyle(Palette.muted) }.softRow() }.buttonStyle(.plain)
-            }
-            SettingsCard(title: "常用选项", subtitle: "使用开关控制自动化和体验偏好。") {
-                ToggleRow(title: "深色主题", subtitle: "关闭后切换为明亮主题。", isOn: $isDarkMode)
-                ToggleRow(title: "每日预算提醒", subtitle: "当支出接近上限时进行提示。", isOn: $store.budgetReminder)
-                HStack { VStack(alignment: .leading, spacing: 4) { Text("每月总预算").font(.system(size: 14, weight: .bold)); Text("用于首页预算执行率核算").font(.caption).foregroundStyle(Palette.muted) }; Spacer(); Text(store.currency.symbol).foregroundStyle(Palette.muted); TextField("0", value: $store.monthlyBudget, format: .number).keyboardType(.decimalPad).multilineTextAlignment(.trailing).frame(width: 100) }.softRow()
-            }
-            GlassCard {
-                VStack(spacing: 12) {
-                    HStack(alignment: .top) {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text("分类管理").font(.system(size: 18, weight: .bold))
-                            Text("常用分类与本地记录数量").font(.system(size: 12)).foregroundStyle(Palette.muted)
-                        }
-                        Spacer()
-                        Button("管理") { showCategoryManager = true }
-                            .font(.system(size: 13, weight: .bold))
-                            .foregroundStyle(Palette.primary)
-                            .buttonStyle(.plain)
-                    }
-                    ForEach(store.categories.prefix(4)) { category in
-                        Button { editingCategory = category } label: {
-                            ManageRow(
-                                icon: category.icon,
-                                color: .from(category.colorIndex),
-                                title: category.name,
-                                subtitle: "\(store.records.filter { $0.categoryID == category.id }.count) 笔记录"
-                            )
-                        }
-                        .buttonStyle(.plain)
-                    }
-                    if store.categories.count > 4 {
-                        Text("还有 \(store.categories.count - 4) 个分类")
-                            .font(.caption)
-                            .foregroundStyle(Palette.muted)
+                    SettingsCard(title: "常用选项", subtitle: "使用开关控制自动化和体验偏好。") {
+                        ToggleRow(title: "深色主题", subtitle: "关闭后切换为明亮主题。", isOn: $isDarkMode)
+                        ToggleRow(title: "每日预算提醒", subtitle: "当支出接近上限时进行提示。", isOn: $store.budgetReminder)
+                        HStack { VStack(alignment: .leading, spacing: 4) { Text("每月总预算").font(.system(size: 14, weight: .bold)); Text("用于首页预算执行率核算").font(.caption).foregroundStyle(Palette.muted) }; Spacer(); Text(store.currency.symbol).foregroundStyle(Palette.muted); TextField("0", value: $store.monthlyBudget, format: .number).keyboardType(.decimalPad).multilineTextAlignment(.trailing).frame(width: 100) }.softRow()
                     }
                 }
-            }
-            SettingsCard(title: "数据与隐私", subtitle: "导出、备份和清除数据的高风险操作应清晰区分。") {
-                Button("导出 CSV") { exporting = true }.buttonStyle(GradientButtonStyle())
-                Button("清除全部记账记录") { showClearConfirmation = true }.buttonStyle(DangerButtonStyle())
-            }
-            SettingsCard(title: "关于", subtitle: "版本信息、隐私和服务协议。") {
-                Button { aboutPage = .version } label: { AboutRow(title: "版本", subtitle: AppMetadata.versionDescription) }.buttonStyle(.plain)
-                Button { aboutPage = .privacy } label: { AboutRow(title: "隐私政策", subtitle: "查看数据收集和存储说明") }.buttonStyle(.plain)
-                Button { aboutPage = .agreement } label: { AboutRow(title: "用户协议", subtitle: "查看使用条款") }.buttonStyle(.plain)
-                if let supportURL = AppMetadata.supportURL {
-                    Link(destination: supportURL) { AboutRow(title: "支持与联系", subtitle: "打开支持页面") }
-                        .buttonStyle(.plain)
+            } trailing: {
+                VStack(spacing: 14) {
+                    GlassCard {
+                        VStack(spacing: 12) {
+                            HStack(alignment: .top) {
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text("分类管理").font(.system(size: 18, weight: .bold))
+                                    Text("常用分类与本地记录数量").font(.system(size: 12)).foregroundStyle(Palette.muted)
+                                }
+                                Spacer()
+                                Button("管理") { showCategoryManager = true }
+                                    .font(.system(size: 13, weight: .bold))
+                                    .foregroundStyle(Palette.primary)
+                                    .buttonStyle(.plain)
+                            }
+                            ForEach(store.categories.prefix(4)) { category in
+                                Button { editingCategory = category } label: {
+                                    ManageRow(
+                                        icon: category.icon,
+                                        color: .from(category.colorIndex),
+                                        title: category.name,
+                                        subtitle: "\(store.records.filter { $0.categoryID == category.id }.count) 笔记录"
+                                    )
+                                }
+                                .buttonStyle(.plain)
+                            }
+                            if store.categories.count > 4 {
+                                Text("还有 \(store.categories.count - 4) 个分类")
+                                    .font(.caption)
+                                    .foregroundStyle(Palette.muted)
+                            }
+                        }
+                    }
+                    SettingsCard(title: "数据与隐私", subtitle: "导出、备份和清除数据的高风险操作应清晰区分。") {
+                        Button("导出 CSV") { exporting = true }.buttonStyle(GradientButtonStyle())
+                        Button("清除全部记账记录") { showClearConfirmation = true }.buttonStyle(DangerButtonStyle())
+                    }
+                    SettingsCard(title: "关于", subtitle: "版本信息、隐私和服务协议。") {
+                        Button { aboutPage = .version } label: { AboutRow(title: "版本", subtitle: AppMetadata.versionDescription) }.buttonStyle(.plain)
+                        Button { aboutPage = .privacy } label: { AboutRow(title: "隐私政策", subtitle: "查看数据收集和存储说明") }.buttonStyle(.plain)
+                        Button { aboutPage = .agreement } label: { AboutRow(title: "用户协议", subtitle: "查看使用条款") }.buttonStyle(.plain)
+                        if let supportURL = AppMetadata.supportURL {
+                            Link(destination: supportURL) { AboutRow(title: "支持与联系", subtitle: "打开支持页面") }
+                                .buttonStyle(.plain)
+                        }
+                    }
                 }
             }
         }

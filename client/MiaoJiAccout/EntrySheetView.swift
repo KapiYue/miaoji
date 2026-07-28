@@ -237,6 +237,23 @@ struct EntrySheetView: View {
             if editingRecord == nil, categoryID == nil {
                 categoryID = store.categories.first?.id
             }
+            if isVoice, ScreenshotConfiguration.voiceState == .drafts, voiceDrafts.isEmpty {
+                let now = Date.now
+                voiceDrafts = [
+                    VoiceExpenseDraft(
+                        amount: "45",
+                        title: "午餐",
+                        categoryID: store.categories.first(where: { $0.name == "餐饮" })?.id,
+                        date: now.addingTimeInterval(-60)
+                    ),
+                    VoiceExpenseDraft(
+                        amount: "28",
+                        title: "打车",
+                        categoryID: store.categories.first(where: { $0.name == "交通" })?.id,
+                        date: now
+                    )
+                ]
+            }
         }
         .onDisappear { voiceInput.cancelRecording() }
         .onChange(of: voiceInput.parsedExpenses) { _, expenses in
@@ -247,7 +264,7 @@ struct EntrySheetView: View {
                     amount: $0.amount.formatted(.number.precision(.fractionLength(0...2))),
                     title: $0.title,
                     categoryID: $0.categoryID,
-                    date: now
+                    date: $0.resolvedDate ?? now
                 )
             }
         }

@@ -2,6 +2,7 @@ import SwiftUI
 
 struct HistoryView: View {
     @EnvironmentObject private var store: AppStore
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @State private var search = ""
     @State private var showFilters = false
     @State private var selectedCategory: UUID?
@@ -36,6 +37,12 @@ struct HistoryView: View {
         guard !grouped.isEmpty else { return "0 笔" }
         return "\((Double(filtered.count) / Double(grouped.count)).formatted(.number.precision(.fractionLength(1)))) 笔"
     }
+    private var historyColumns: [GridItem] {
+        Array(
+            repeating: GridItem(.flexible(), spacing: 14, alignment: .top),
+            count: horizontalSizeClass == .regular ? 2 : 1
+        )
+    }
     var body: some View {
         Screen {
             Hero(eyebrow: "时间线", title: "历史", subtitle: "按日期聚合，重点记录一眼可扫。", pill: "筛选") {
@@ -52,15 +59,18 @@ struct HistoryView: View {
                 }
             }
             if grouped.isEmpty { Text(search.isEmpty ? "暂无本地记录。" : "没有匹配的记录。").foregroundStyle(Palette.muted).softRow() }
-            ForEach(grouped, id: \.0) { day, records in
-                VStack(spacing: 12) {
-                    GlassCard {
-                        HStack {
-                            VStack(alignment: .leading, spacing: 4) { Text(dayTitle(day)).font(.title3.bold()); Text("\(store.formatDate(day)) · \(store.formatWeekday(day))").font(.caption).foregroundStyle(Palette.muted) }
-                            Spacer(); VStack(alignment: .trailing, spacing: 3) { Text(store.format(records.reduce(0) { $0 + ($1.recordType == .income ? -$1.amount : $1.amount) })).font(.system(size: 16, weight: .bold)); Text("\(records.count) 笔").font(.caption).foregroundStyle(Palette.muted) }
+            LazyVGrid(columns: historyColumns, alignment: .leading, spacing: 14) {
+                ForEach(grouped, id: \.0) { day, records in
+                    VStack(spacing: 12) {
+                        GlassCard {
+                            HStack {
+                                VStack(alignment: .leading, spacing: 4) { Text(dayTitle(day)).font(.title3.bold()); Text("\(store.formatDate(day)) · \(store.formatWeekday(day))").font(.caption).foregroundStyle(Palette.muted) }
+                                Spacer(); VStack(alignment: .trailing, spacing: 3) { Text(store.format(records.reduce(0) { $0 + ($1.recordType == .income ? -$1.amount : $1.amount) })).font(.system(size: 16, weight: .bold)); Text("\(records.count) 笔").font(.caption).foregroundStyle(Palette.muted) }
+                            }
                         }
+                        ForEach(records) { record in Button { editingRecord = record } label: { RecordRow(record: record, showsFullDate: !Calendar.current.isDate(record.date, equalTo: .now, toGranularity: .year)) }.buttonStyle(.plain) }
                     }
-                    ForEach(records) { record in Button { editingRecord = record } label: { RecordRow(record: record, showsFullDate: !Calendar.current.isDate(record.date, equalTo: .now, toGranularity: .year)) }.buttonStyle(.plain) }
+                    .frame(maxWidth: .infinity, alignment: .top)
                 }
             }
             GlassCard {
@@ -116,5 +126,4 @@ struct HistoryGroup: View {
         }
     }
 }
-
 

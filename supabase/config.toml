@@ -1,0 +1,6 @@
+project_id = "vbnswvtycixwhvbwuoxz"
+
+[functions.cleanup-user-audio]
+# The hourly Cron call authenticates with the project's secret key in the
+# `apikey` header. The function performs its own constant-scope key check.
+verify_jwt = false

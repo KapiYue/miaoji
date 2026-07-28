@@ -1,18 +1,19 @@
 # 妙记 App Store 上架清单
 
-更新日期：2026 年 7 月 14 日
+更新日期：2026 年 7 月 23 日
 
 ## 当前结论
 
 仓库内的主要代码级上架项已经补齐：隐私清单、麦克风用途说明、App 图标、动态版本号、应用内隐私政策入口、账号永久删除、Release 配置拦截、语音 API 鉴权、私有临时录音与清理、生产容器以及后端/iOS 测试。
 
-以下三项仍必须由发布账号持有人完成，当前配置不允许直接归档上传：
+以下项目仍必须由发布账号持有人完成，当前配置不允许直接归档上传：
 
-1. 把 `personal.MiaoJiAccout.test1` 换成已经在 Apple Developer 注册的正式 Bundle ID。
-2. 把 `MIAOJI_API_BASE_URL` 从局域网 HTTP 地址换成已部署、可从公网访问的 HTTPS 地址。
-3. 在 Supabase 生产项目执行新增迁移，并创建可交给 App Review 的固定邮箱密码测试账号。
+1. **恢复 Release 配置拦截**：从 App Target 的 Release Build Settings 删除临时的 `MIAOJI_TEMPORARILY_SKIP_RELEASE_VALIDATION = YES`，确认构建日志不再出现“配置检查已临时跳过”。
+2. 确认 `com.joy-coder.miaoji` 已在 Apple Developer 注册并与 App Store Connect 记录一致。
+3. 把 `MIAOJI_API_BASE_URL` 从局域网 HTTP 地址换成已部署、可从公网访问的 HTTPS 地址。
+4. 用待提交 Build 验证生产环境的 `superai@qq.com` 审核账号、语音解析与云同步。
 
-工程中的 `Validate App Store Release Configuration` 构建阶段会在 Release 构建时自动阻止上述错误配置。
+工程中的 `Validate App Store Release Configuration` 构建阶段原本会在 Release 构建时自动阻止上述错误配置。为便于当前真机调试，Release 配置已临时启用显式跳过开关并在构建日志中输出 warning；该开关仅用于开发绕过，不能用于 Archive、TestFlight 或送审 Build。
 
 ## 一、开发者账号和标识符
 
@@ -36,7 +37,7 @@
 
 1. 用真实运营主体、联系地址、适用法域、服务器地区和第三方服务条款审阅并完善 `privacy-policy.md`、`terms-of-service.md` 和 `support.md`。
 2. 将页面部署到稳定、无需登录即可访问的 HTTPS 网站。计划地址为 `miaoji.joy-coder.com`；域名购买于腾讯云，ICP 备案和页面部署完成后，再写入最终配置。
-3. App Store Connect → App Privacy 填写隐私政策 URL，并按当前代码声明：Email Address、Other Financial Info、Audio Data、User ID；用途均为 App Functionality、与账号关联、不用于 Tracking。Apple 要求同时申报第三方合作方的数据实践：[Manage app privacy](https://developer.apple.com/help/app-store-connect/manage-app-information/manage-app-privacy)、[App Privacy Details](https://developer.apple.com/app-store/app-privacy-details/)。
+3. App Store Connect → App Privacy 填写隐私政策 URL，并按当前代码声明：Email Address、Other Financial Info、Other User Content、Audio Data、User ID；用途均为 App Functionality、与账号关联、不用于 Tracking。Apple 要求同时申报第三方合作方的数据实践：[Manage app privacy](https://developer.apple.com/help/app-store-connect/manage-app-information/manage-app-privacy)、[App Privacy Details](https://developer.apple.com/app-store/app-privacy-details/)。
 4. 应用已为 `UserDefaults` 声明 CA92.1。Apple 要求 Required Reason API 带准确理由：[Required Reason APIs](https://developer.apple.com/documentation/bundleresources/describing-use-of-required-reason-api)。
 5. 应用支持创建账号，因此必须在 App 内删除整个账号及关联数据；本项目已提供入口：[Offering account deletion](https://developer.apple.com/support/offering-account-deletion-in-your-app)。
 6. `ITSAppUsesNonExemptEncryption = NO` 已设置，表示仅使用系统 HTTPS/钥匙串等豁免加密且没有自研或非豁免加密。功能变化后要重新判断：[Export compliance](https://developer.apple.com/help/app-store-connect/manage-app-information/overview-of-export-compliance/)。
@@ -52,7 +53,7 @@
 ## 五、商品页材料
 
 1. 使用 `docs/app-store-metadata-zh-CN.md` 准备简体中文描述、关键词、宣传文本、支持 URL、隐私政策 URL、版权和更新说明。
-2. 当前 Target 已改为仅 iPhone。按 `docs/app-store-screenshot-guide.md` 在 iPhone 17 Pro Max 生成简体中文截图；首发不需要 iPad 截图。Apple 允许界面一致时上传所需的最高分辨率截图并自动缩放：[Screenshots](https://developer.apple.com/help/app-store-connect/manage-app-information/upload-app-previews-and-screenshots/)。
+2. 当前 Target 支持 iPhone 与 iPad。按 `docs/app-store-screenshot-guide.md` 生成 1284 × 2778 的 iPhone 6.5 英寸截图和 2064 × 2752 的 iPad 13 英寸截图：[Screenshots](https://developer.apple.com/help/app-store-connect/manage-app-information/upload-app-previews-and-screenshots/)。
 3. 截图覆盖首页、统计、历史和设置；内置截图启动参数只会加载虚构账目，不连接云同步服务，也不会污染普通用户数据。
 4. 名称、截图和描述中不要使用“专业版”等未实际提供的付费权益文案。
 
@@ -63,7 +64,7 @@
 ```text
 妙记可不登录使用本地手动记账。语音解析和云同步需要登录。
 
-审核测试账号：<固定邮箱>
+审核测试账号：superai@qq.com
 密码：<固定密码>
 
 测试语音：设置 → 云同步 → 登录并开启云同步 → 邮箱密码；
@@ -77,13 +78,14 @@ Apple 要求提供可访问完整功能的有效演示账号和特殊配置说�
 
 ## 七、测试和上传
 
-1. 运行后端测试：`server/venv/bin/python -m unittest server/test_app.py`。
-2. Xcode 执行 Product → Test；至少覆盖一台大屏 iPhone、一台较小屏 iPhone 和项目声明的最低 iOS 系统。首发不支持 iPad，不应把 iPad 测试或截图列为提交要求。
-3. TestFlight 重点回归：全新安装/升级/重装、离线与弱网、麦克风拒绝、超时和空结果、跨设备同步、账号删除、深浅色/横竖屏/动态字体/VoiceOver、CSV 导出。
-4. 选择 Any iOS Device (arm64) → Product → Archive → Validate App，清除全部错误和需处理警告。
-5. Distribute App → App Store Connect → Upload。Bundle ID、版本和 Build 决定构建归属，Build 必须唯一：[Upload builds](https://developer.apple.com/help/app-store-connect/manage-builds/upload-builds/)。
-6. 构建处理完成后选择 Build、完成出口合规等缺失字段，并先用 TestFlight 验证生产环境。
-7. Add for Review → Draft Submission → Submit for Review：[Submit an app](https://developer.apple.com/help/app-store-connect/manage-submissions-to-app-review/submit-an-app)。
+1. 删除 App Target → Build Settings → Release 中的 `MIAOJI_TEMPORARILY_SKIP_RELEASE_VALIDATION = YES`，再执行一次 Release 构建；配置检查必须通过且不得出现跳过 warning。
+2. 运行后端测试：`server/venv/bin/python -m unittest server/test_app.py`。
+3. Xcode 执行 Product → Test；至少覆盖一台大屏 iPhone、一台较小屏 iPhone、一台 13 英寸 iPad 和项目声明的最低 iOS 系统。iPad 需要检查双栏/网格布局、横竖屏、键盘和弹窗。
+4. TestFlight 重点回归：全新安装/升级/重装、离线与弱网、麦克风拒绝、超时和空结果、跨设备同步、账号删除、深浅色/横竖屏/动态字体/VoiceOver、CSV 导出。
+5. 选择 Any iOS Device (arm64) → Product → Archive → Validate App，清除全部错误和需处理警告。
+6. Distribute App → App Store Connect → Upload。Bundle ID、版本和 Build 决定构建归属，Build 必须唯一：[Upload builds](https://developer.apple.com/help/app-store-connect/manage-builds/upload-builds/)。
+7. 构建处理完成后选择 Build、完成出口合规等缺失字段，并先用 TestFlight 验证生产环境。
+8. Add for Review → Draft Submission → Submit for Review：[Submit an app](https://developer.apple.com/help/app-store-connect/manage-submissions-to-app-review/submit-an-app)。
 
 ## 八、发布后
 

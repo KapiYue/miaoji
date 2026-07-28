@@ -127,3 +127,12 @@ secrets.yml
 secrets.yaml
 secrets.json
 venv/
+
+# De-identified model evaluation inputs and generated reports stay local.
+/server/test-recordings/
+/server/evaluations/
+/server/evaluation-manifest.json
+/server/pricing.json
+
+# Supabase CLI local link and runtime metadata
+/supabase/.temp/

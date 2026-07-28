@@ -91,11 +91,11 @@ select
 本机运行以下命令，密码会隐藏输入且不会写入仓库：
 
 ```bash
-server/venv/bin/python server/scripts/manage_review_user.py test1@126.com
-server/venv/bin/python server/scripts/manage_review_user.py test2@126.com
+server/venv/bin/python server/scripts/manage_review_user.py superai@qq.com --status-only
+server/venv/bin/python server/scripts/manage_review_user.py superai@qq.com
 ```
 
-当前只读检查结果：`test1@126.com` 已存在且邮箱已确认；`test2@126.com` 尚未创建。脚本会为账号设置固定密码，并将邮箱确认为已验证。
+当前审核账号为 `superai@qq.com`，用户已确认其在生产环境配置。送审前先用 `--status-only` 复核账号存在且邮箱已确认，再使用待提交 Build 验证固定密码和完整功能；密码只填写到 App Store Connect。
 
 ## 回滚原则
 

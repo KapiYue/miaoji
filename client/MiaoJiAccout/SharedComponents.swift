@@ -68,15 +68,36 @@ struct AppBackground: View {
 }
 
 struct Screen<Content: View>: View {
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @ViewBuilder let content: Content
     var body: some View {
         ScrollView(showsIndicators: false) {
             VStack(spacing: 14) { content }
-                .padding(.horizontal, 16)
-                .padding(.top, 10)
+                .padding(.horizontal, horizontalSizeClass == .regular ? 24 : 16)
+                .padding(.top, horizontalSizeClass == .regular ? 18 : 10)
                 .padding(.bottom, 16)
-                .frame(maxWidth: 430)
+                .frame(maxWidth: horizontalSizeClass == .regular ? 1040 : 430)
                 .frame(maxWidth: .infinity)
+        }
+    }
+}
+
+struct AdaptiveColumns<Leading: View, Trailing: View>: View {
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @ViewBuilder let leading: Leading
+    @ViewBuilder let trailing: Trailing
+
+    var body: some View {
+        if horizontalSizeClass == .regular {
+            HStack(alignment: .top, spacing: 16) {
+                leading.frame(maxWidth: .infinity, alignment: .top)
+                trailing.frame(maxWidth: .infinity, alignment: .top)
+            }
+        } else {
+            VStack(spacing: 14) {
+                leading
+                trailing
+            }
         }
     }
 }
@@ -220,6 +241,7 @@ extension View {
 
 struct FloatingTabBar: View {
     @Binding var selection: AppTab
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     var body: some View {
         HStack(spacing: 0) {
             ForEach(AppTab.allCases, id: \.self) { tab in
@@ -257,7 +279,10 @@ struct FloatingTabBar: View {
         }
         .background(.ultraThinMaterial).background(Palette.surfaceTop.opacity(0.72))
         .clipShape(RoundedRectangle(cornerRadius: 24)).overlay(RoundedRectangle(cornerRadius: 24).stroke(Palette.line)).shadow(color: .black.opacity(0.18), radius: 20, y: 10)
-        .padding(.horizontal, 16).padding(.top, 8).padding(.bottom, 4).frame(maxWidth: 430)
+        .padding(.horizontal, horizontalSizeClass == .regular ? 24 : 16)
+        .padding(.top, 8)
+        .padding(.bottom, 4)
+        .frame(maxWidth: horizontalSizeClass == .regular ? 680 : 430)
     }
 }
 
@@ -281,4 +306,3 @@ struct DangerButtonStyle: ButtonStyle {
         configuration.label.font(.system(size: 14, weight: .heavy)).foregroundStyle(.white).frame(maxWidth: .infinity).padding(.vertical, 13).background(LinearGradient(colors: [Color(red: 248/255, green: 113/255, blue: 113/255), Palette.pink], startPoint: .topLeading, endPoint: .bottomTrailing)).clipShape(RoundedRectangle(cornerRadius: 18))
     }
 }
-

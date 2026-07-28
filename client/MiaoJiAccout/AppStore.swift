@@ -1,6 +1,21 @@
 import Foundation
 import Combine
 
+enum ScreenshotVoiceState: String {
+    case ready, recording, analyzing, drafts, saved
+}
+
+enum ScreenshotConfiguration {
+    static var voiceState: ScreenshotVoiceState? {
+        let arguments = ProcessInfo.processInfo.arguments
+        guard arguments.contains("--screenshot-demo-data"),
+              let flagIndex = arguments.firstIndex(of: "--screenshot-voice-state"),
+              arguments.indices.contains(flagIndex + 1)
+        else { return nil }
+        return ScreenshotVoiceState(rawValue: arguments[flagIndex + 1])
+    }
+}
+
 struct ExpenseCategory: Identifiable, Codable, Hashable {
     var id = UUID()
     var name: String
@@ -102,8 +117,11 @@ final class AppStore: ObservableObject {
             localUpdatedAt = .now
             categories = Self.defaultCategories
             records = Self.demoRecords(categories: categories)
+            if ScreenshotConfiguration.voiceState == .saved {
+                records.append(contentsOf: Self.demoVoiceRecords(categories: categories))
+            }
             currency = .cny
-            monthlyBudget = 6_800
+            monthlyBudget = 7_200
         } else if let data = defaults.data(forKey: key), let value = try? JSONDecoder().decode(StoredData.self, from: data) {
             hasLocalData = true
             localUpdatedAt = value.updatedAt ?? .distantPast
@@ -452,41 +470,76 @@ final class AppStore: ObservableObject {
         }
         let today = max(1, calendar.component(.day, from: now))
         let yesterday = max(1, today - 1)
-        let earlier = max(1, today - 4)
+        var records = [
+            ExpenseRecord(amount: 12_800, title: "本月收入", note: "虚构演示收入", categoryID: categoryID("其他"), date: date(day: 1, hour: 9), type: .income),
+            ExpenseRecord(amount: 28.8, title: "晨间咖啡", note: "开启轻松的一天", categoryID: categoryID("餐饮"), date: date(day: today, hour: 8)),
+            ExpenseRecord(amount: 46, title: "午间简餐", note: "工作日套餐", categoryID: categoryID("餐饮"), date: date(day: today, hour: 12)),
+            ExpenseRecord(amount: 8, title: "城市地铁", note: "绿色通勤", categoryID: categoryID("交通"), date: date(day: today, hour: 18)),
+            ExpenseRecord(amount: 88, title: "晚间花束", note: "给生活一点颜色", categoryID: categoryID("购物"), date: date(day: today, hour: 19)),
+            ExpenseRecord(amount: 236.5, title: "超市采购", note: "一周新鲜食材", categoryID: categoryID("购物"), date: date(day: yesterday, hour: 19)),
+            ExpenseRecord(amount: 3, title: "共享单车", note: "最后一公里", categoryID: categoryID("交通"), date: date(day: yesterday, hour: 20)),
+            ExpenseRecord(amount: 96, title: "周末电影", note: "双人电影票", categoryID: categoryID("娱乐"), date: date(day: max(1, today - 2), hour: 20)),
+            ExpenseRecord(amount: 128, title: "瑜伽体验", note: "舒展与放松", categoryID: categoryID("其他"), date: date(day: max(1, today - 2), hour: 10)),
+            ExpenseRecord(amount: 328.6, title: "生活用品", note: "月度安心补货", categoryID: categoryID("购物"), date: date(day: max(1, today - 4), hour: 16)),
+            ExpenseRecord(amount: 268, title: "朋友聚餐", note: "周末好好见面", categoryID: categoryID("餐饮"), date: date(day: max(1, today - 5), hour: 19)),
+            ExpenseRecord(amount: 188, title: "城际出行", note: "短途往返", categoryID: categoryID("交通"), date: date(day: max(1, today - 6), hour: 9)),
+            ExpenseRecord(amount: 86, title: "常用药品", note: "补充家庭药箱", categoryID: categoryID("医疗"), date: date(day: max(1, today - 7), hour: 11)),
+            ExpenseRecord(amount: 78, title: "纸质书", note: "周末慢慢读", categoryID: categoryID("娱乐"), date: date(day: max(1, today - 8), hour: 15)),
+            ExpenseRecord(amount: 560, title: "轻便外套", note: "换季添置", categoryID: categoryID("购物"), date: date(day: max(1, today - 9), hour: 15)),
+            ExpenseRecord(amount: 199, title: "早餐月卡", note: "规律早餐计划", categoryID: categoryID("餐饮"), date: date(day: max(1, today - 10), hour: 8)),
+            ExpenseRecord(amount: 168, title: "植物养护", note: "阳台焕新", categoryID: categoryID("其他"), date: date(day: max(1, today - 11), hour: 16)),
+            ExpenseRecord(amount: 128, title: "周末早午餐", note: "慢下来享受周末", categoryID: categoryID("餐饮"), date: date(day: max(1, today - 12), hour: 11)),
+            ExpenseRecord(amount: 268, title: "桌面台灯", note: "温暖阅读角", categoryID: categoryID("购物"), date: date(day: max(1, today - 13), hour: 18)),
+            ExpenseRecord(amount: 120, title: "通勤充值", note: "本月交通余额", categoryID: categoryID("交通"), date: date(day: max(1, today - 14), hour: 9))
+        ]
+
+        let historicalMonths: [(offset: Int, amounts: [Double])] = [
+            (-1, [980, 1_120, 420, 380, 180, 260]),
+            (-2, [920, 980, 360, 310, 170, 240]),
+            (-3, [1_080, 1_260, 450, 420, 190, 220]),
+            (-4, [960, 1_030, 390, 350, 160, 260]),
+            (-5, [1_020, 1_180, 430, 390, 180, 280]),
+            (-6, [940, 1_050, 400, 360, 170, 290])
+        ]
+        let historicalCategories = ["餐饮", "购物", "交通", "娱乐", "医疗", "其他"]
+        let historicalTitles = ["日常餐饮", "居家添置", "通勤出行", "休闲娱乐", "健康用品", "生活杂项"]
+        let historicalDays = [5, 8, 12, 16, 20, 24]
+
+        for month in historicalMonths {
+            for index in historicalCategories.indices {
+                records.append(
+                    ExpenseRecord(
+                        amount: month.amounts[index],
+                        title: historicalTitles[index],
+                        note: "虚构历史趋势数据",
+                        categoryID: categoryID(historicalCategories[index]),
+                        date: date(monthOffset: month.offset, day: historicalDays[index], hour: 12 + index)
+                    )
+                )
+            }
+        }
+        return records
+    }
+
+    private static func demoVoiceRecords(categories: [ExpenseCategory], now: Date = .now) -> [ExpenseRecord] {
+        func categoryID(_ name: String) -> UUID {
+            categories.first(where: { $0.name == name })?.id ?? categories[0].id
+        }
         return [
-            ExpenseRecord(amount: 9_200, title: "本月工资", note: "演示收入", categoryID: categoryID("其他"), date: date(day: 1, hour: 9), type: .income),
-            ExpenseRecord(amount: 32, title: "早餐与咖啡", note: "工作日前的能量补给", categoryID: categoryID("餐饮"), date: date(day: today, hour: 8)),
-            ExpenseRecord(amount: 58, title: "午餐", note: "和同事一起", categoryID: categoryID("餐饮"), date: date(day: today, hour: 12)),
-            ExpenseRecord(amount: 36, title: "水果补给", note: "下班顺手买", categoryID: categoryID("餐饮"), date: date(day: today, hour: 17)),
-            ExpenseRecord(amount: 42, title: "打车", note: "雨天通勤", categoryID: categoryID("交通"), date: date(day: today, hour: 18)),
-            ExpenseRecord(amount: 128, title: "超市采购", note: "一周食材", categoryID: categoryID("购物"), date: date(day: yesterday, hour: 19)),
-            ExpenseRecord(amount: 16, title: "地铁", note: "往返通勤", categoryID: categoryID("交通"), date: date(day: yesterday, hour: 20)),
-            ExpenseRecord(amount: 68, title: "电子书", note: "通勤阅读", categoryID: categoryID("娱乐"), date: date(day: max(1, today - 2), hour: 21)),
-            ExpenseRecord(amount: 299, title: "生活用品", note: "月度补货", categoryID: categoryID("购物"), date: date(day: earlier, hour: 16)),
-            ExpenseRecord(amount: 168, title: "健身月卡", note: "健康投入", categoryID: categoryID("其他"), date: date(day: max(1, earlier - 1), hour: 20)),
-            ExpenseRecord(amount: 86, title: "常用药品", note: "家庭药箱补充", categoryID: categoryID("医疗"), date: date(day: max(1, earlier - 2), hour: 11)),
-            ExpenseRecord(amount: 420, title: "轻便外套", note: "换季添置", categoryID: categoryID("购物"), date: date(day: max(1, earlier - 5), hour: 15)),
-            ExpenseRecord(amount: 210, title: "朋友聚餐", note: "周末放松", categoryID: categoryID("餐饮"), date: date(day: max(1, earlier - 7), hour: 19)),
-            ExpenseRecord(amount: 96, title: "公交地铁", note: "通勤合计", categoryID: categoryID("交通"), date: date(day: max(1, earlier - 9), hour: 18)),
-            ExpenseRecord(amount: 520, title: "上月购物", note: "演示数据", categoryID: categoryID("购物"), date: date(monthOffset: -1, day: 20, hour: 15)),
-            ExpenseRecord(amount: 460, title: "上月餐饮", note: "演示数据", categoryID: categoryID("餐饮"), date: date(monthOffset: -1, day: 18, hour: 19)),
-            ExpenseRecord(amount: 188, title: "上月交通", note: "演示数据", categoryID: categoryID("交通"), date: date(monthOffset: -1, day: 8, hour: 18)),
-            ExpenseRecord(amount: 336, title: "上月娱乐", note: "演示数据", categoryID: categoryID("娱乐"), date: date(monthOffset: -1, day: 5, hour: 20)),
-            ExpenseRecord(amount: 420, title: "二月餐饮", note: "演示数据", categoryID: categoryID("餐饮"), date: date(monthOffset: -2, day: 16, hour: 12)),
-            ExpenseRecord(amount: 380, title: "二月购物", note: "演示数据", categoryID: categoryID("购物"), date: date(monthOffset: -2, day: 9, hour: 17)),
-            ExpenseRecord(amount: 260, title: "二月交通", note: "演示数据", categoryID: categoryID("交通"), date: date(monthOffset: -2, day: 5, hour: 9)),
-            ExpenseRecord(amount: 360, title: "三月餐饮", note: "演示数据", categoryID: categoryID("餐饮"), date: date(monthOffset: -3, day: 14, hour: 12)),
-            ExpenseRecord(amount: 520, title: "三月购物", note: "演示数据", categoryID: categoryID("购物"), date: date(monthOffset: -3, day: 10, hour: 15)),
-            ExpenseRecord(amount: 180, title: "三月医疗", note: "演示数据", categoryID: categoryID("医疗"), date: date(monthOffset: -3, day: 6, hour: 10)),
-            ExpenseRecord(amount: 440, title: "四月餐饮", note: "演示数据", categoryID: categoryID("餐饮"), date: date(monthOffset: -4, day: 19, hour: 13)),
-            ExpenseRecord(amount: 360, title: "四月娱乐", note: "演示数据", categoryID: categoryID("娱乐"), date: date(monthOffset: -4, day: 12, hour: 20)),
-            ExpenseRecord(amount: 290, title: "四月交通", note: "演示数据", categoryID: categoryID("交通"), date: date(monthOffset: -4, day: 4, hour: 18)),
-            ExpenseRecord(amount: 390, title: "五月餐饮", note: "演示数据", categoryID: categoryID("餐饮"), date: date(monthOffset: -5, day: 18, hour: 12)),
-            ExpenseRecord(amount: 450, title: "五月购物", note: "演示数据", categoryID: categoryID("购物"), date: date(monthOffset: -5, day: 11, hour: 16)),
-            ExpenseRecord(amount: 210, title: "五月交通", note: "演示数据", categoryID: categoryID("交通"), date: date(monthOffset: -5, day: 6, hour: 8)),
-            ExpenseRecord(amount: 410, title: "六月餐饮", note: "演示数据", categoryID: categoryID("餐饮"), date: date(monthOffset: -6, day: 15, hour: 12)),
-            ExpenseRecord(amount: 320, title: "六月购物", note: "演示数据", categoryID: categoryID("购物"), date: date(monthOffset: -6, day: 9, hour: 15)),
-            ExpenseRecord(amount: 240, title: "六月娱乐", note: "演示数据", categoryID: categoryID("娱乐"), date: date(monthOffset: -6, day: 3, hour: 20))
+            ExpenseRecord(
+                amount: 45,
+                title: "午餐",
+                note: "AI 语音解析",
+                categoryID: categoryID("餐饮"),
+                date: now.addingTimeInterval(-60)
+            ),
+            ExpenseRecord(
+                amount: 28,
+                title: "打车",
+                note: "AI 语音解析",
+                categoryID: categoryID("交通"),
+                date: now
+            )
         ]
     }
 }

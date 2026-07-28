@@ -8,6 +8,12 @@ from unittest.mock import Mock, patch
 os.environ.setdefault("SUPABASE_URL", "https://example.supabase.co")
 os.environ.setdefault("SUPABASE_SECRET_KEY", "sb_secret_test-key")
 os.environ.setdefault("DASHSCOPE_API_KEY", "test-dashscope-key")
+os.environ["DASHSCOPE_MODEL"] = "qwen3.5-omni-plus"
+os.environ.setdefault(
+    "DASHSCOPE_BASE_URL",
+    "https://test-workspace.cn-beijing.maas.aliyuncs.com/compatible-mode/v1",
+)
+os.environ.setdefault("BUSINESS_TIMEZONE", "Asia/Shanghai")
 
 from server import app as app_module
 
@@ -144,8 +150,8 @@ class ParseAudioExpensesTests(unittest.TestCase):
     def test_returns_multiple_normalized_expenses(self):
         ai_text = (
             '```json\n['
-            '{"amount":45,"title":"午餐","category_id":"category-food","category_name":"餐饮"},'
-            '{"amount":28,"title":"打车","category_id":"category-travel","category_name":"交通"}'
+            '{"amount":45,"title":"午餐","category_id":"category-food","category_name":"餐饮","date":"2026-07-12"},'
+            '{"amount":28,"title":"打车","category_id":"category-travel","category_name":"交通","date":"2026-07-13"}'
             ']\n```'
         )
         chunks = [
@@ -171,18 +177,62 @@ class ParseAudioExpensesTests(unittest.TestCase):
         payload = response.get_json()
         self.assertEqual(len(payload), 2)
         self.assertEqual(payload[0]["amount"], 45.0)
+        self.assertEqual(payload[0]["date"], "2026-07-12")
         self.assertEqual(payload[1]["category_id"], "category-travel")
         call = create.call_args.kwargs
+        self.assertEqual(call["model"], "qwen3.5-omni-plus")
         self.assertTrue(call["stream"])
         self.assertEqual(call["modalities"], ["text"])
-        audio_url = call["messages"][0]["content"][0]["input_audio"]["data"]
+        audio_input = call["messages"][0]["content"][0]["input_audio"]
+        audio_url = audio_input["data"]
         self.assertIn("/storage/v1/object/sign/user-audio/", audio_url)
+        self.assertEqual(audio_input["format"], "m4a")
+        self.assertIn("YYYY-MM-DD", call["messages"][0]["content"][1]["text"])
         self.assertEqual(self.supabase.bucket.removed_paths, [self.audio_path])
 
     def test_rejects_category_not_supplied_by_client(self):
-        invalid = '[{"amount":10,"title":"电影","category_id":"unknown","category_name":"娱乐"}]'
+        invalid = '[{"amount":10,"title":"电影","category_id":"unknown","category_name":"娱乐","date":"2026-07-13"}]'
         with self.assertRaises(ValueError):
             app_module._normalize_ai_entries(invalid, self.categories)
+
+    def test_rejects_missing_or_invalid_expense_date(self):
+        missing = '[{"amount":10,"title":"午餐","category_id":"category-food","category_name":"餐饮"}]'
+        invalid = '[{"amount":10,"title":"午餐","category_id":"category-food","category_name":"餐饮","date":"昨天"}]'
+
+        with self.assertRaisesRegex(ValueError, "date is required"):
+            app_module._normalize_ai_entries(missing, self.categories)
+        with self.assertRaisesRegex(ValueError, "YYYY-MM-DD"):
+            app_module._normalize_ai_entries(invalid, self.categories)
+
+    def test_rejects_invalid_business_timezone_configuration(self):
+        with patch.object(app_module, "BUSINESS_TIMEZONE", "Not/A-Timezone"):
+            response = self.client.post(
+                "/parse-audio-expenses",
+                json={"audio_path": self.audio_path, "categories": self.categories},
+                headers=AUTH_HEADERS,
+            )
+
+        self.assertEqual(response.status_code, 503)
+        self.assertIn("timezone", response.get_json()["error"])
+
+
+class DashScopeConfigurationTests(unittest.TestCase):
+    def test_accepts_workspace_and_legacy_model_studio_hosts(self):
+        workspace = "https://llm-example.cn-beijing.maas.aliyuncs.com/compatible-mode/v1"
+        legacy = "https://dashscope.aliyuncs.com/compatible-mode/v1"
+
+        self.assertEqual(app_module._validated_dashscope_base_url(workspace), workspace)
+        self.assertEqual(app_module._validated_dashscope_base_url(legacy), legacy)
+
+    def test_rejects_non_https_or_unrelated_hosts(self):
+        with self.assertRaises(ValueError):
+            app_module._validated_dashscope_base_url(
+                "http://llm-example.cn-beijing.maas.aliyuncs.com/compatible-mode/v1"
+            )
+        with self.assertRaises(ValueError):
+            app_module._validated_dashscope_base_url(
+                "https://example.com/compatible-mode/v1"
+            )
 
 
 if __name__ == "__main__":

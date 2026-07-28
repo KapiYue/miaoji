@@ -60,34 +60,39 @@ struct StatisticsView: View {
                 SegmentedPicker(items: ["月", "季度", "年"], selection: $period)
             }
             MetricsRow(metrics: [("\(periodName)支出", store.format(total)), ("平均每笔", store.format(scopedRecords.isEmpty ? 0 : total / Double(scopedRecords.count))), ("记录数", "\(scopedRecords.count)")])
-            GlassCard {
-                VStack(spacing: 16) {
-                    SectionHeading(title: "支出趋势", subtitle: "切换维度后，柱状高度会更新。", trailing: "趋势")
-                    TrendChart(items: trend)
-                }
-            }
-            GlassCard {
-                VStack(spacing: 16) {
-                    SectionHeading(title: "分类分布", subtitle: "用圆环图概括消费结构。", trailing: "占比")
-                    DonutChart(items: categoryTotals.map { ($0.1, BadgeColor.from($0.0.colorIndex).colors[0]) }, total: store.format(total), subtitle: "\(periodName)总支出")
-                    if scopedRecords.isEmpty { Text("该周期暂无记录。").font(.caption).foregroundStyle(Palette.muted) }
-                    ForEach(categoryTotals, id: \.0.id) { category, amount in
-                        ExpenseRow(badge: "", color: .from(category.colorIndex), title: category.name, meta: "\(scopedRecords.filter { $0.categoryID == category.id }.count) 笔 · 分类占比", amount: store.format(amount), note: total == 0 ? "0%" : "\((amount / total * 100).formatted(.number.precision(.fractionLength(1))))%")
+            AdaptiveColumns {
+                GlassCard {
+                    VStack(spacing: 16) {
+                        SectionHeading(title: "支出趋势", subtitle: "切换维度后，柱状高度会更新。", trailing: "趋势")
+                        TrendChart(items: trend)
                     }
                 }
-            }
-            GlassCard {
+            } trailing: {
                 VStack(spacing: 14) {
-                    SectionHeading(title: "关键结论", subtitle: "用摘要卡片快速理解消费变化。")
-                    ForEach(Array(conclusions.enumerated()), id: \.offset) { _, conclusion in
-                        HStack(alignment: .center, spacing: 12) {
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text(conclusion.0).font(.system(size: 14, weight: .bold))
-                                Text(conclusion.1).font(.system(size: 12)).foregroundStyle(Palette.muted)
+                    GlassCard {
+                        VStack(spacing: 16) {
+                            SectionHeading(title: "分类分布", subtitle: "用圆环图概括消费结构。", trailing: "占比")
+                            DonutChart(items: categoryTotals.map { ($0.1, BadgeColor.from($0.0.colorIndex).colors[0]) }, total: store.format(total), subtitle: "\(periodName)总支出")
+                            if scopedRecords.isEmpty { Text("该周期暂无记录。").font(.caption).foregroundStyle(Palette.muted) }
+                            ForEach(categoryTotals, id: \.0.id) { category, amount in
+                                ExpenseRow(badge: "", color: .from(category.colorIndex), title: category.name, meta: "\(scopedRecords.filter { $0.categoryID == category.id }.count) 笔 · 分类占比", amount: store.format(amount), note: total == 0 ? "0%" : "\((amount / total * 100).formatted(.number.precision(.fractionLength(1))))%")
                             }
-                            Spacer(minLength: 8)
-                            Pill(conclusion.2)
-                        }.softRow()
+                        }
+                    }
+                    GlassCard {
+                        VStack(spacing: 14) {
+                            SectionHeading(title: "关键结论", subtitle: "用摘要卡片快速理解消费变化。")
+                            ForEach(Array(conclusions.enumerated()), id: \.offset) { _, conclusion in
+                                HStack(alignment: .center, spacing: 12) {
+                                    VStack(alignment: .leading, spacing: 4) {
+                                        Text(conclusion.0).font(.system(size: 14, weight: .bold))
+                                        Text(conclusion.1).font(.system(size: 12)).foregroundStyle(Palette.muted)
+                                    }
+                                    Spacer(minLength: 8)
+                                    Pill(conclusion.2)
+                                }.softRow()
+                            }
+                        }
                     }
                 }
             }
@@ -167,5 +172,4 @@ struct InsightRow: View {
             .padding(14).background(Palette.soft).clipShape(RoundedRectangle(cornerRadius: 20)).overlay(RoundedRectangle(cornerRadius: 20).stroke(Palette.line))
     }
 }
-
 

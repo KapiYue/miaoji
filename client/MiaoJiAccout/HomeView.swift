@@ -3,6 +3,12 @@ import SwiftUI
 struct HomeView: View {
     @EnvironmentObject private var store: AppStore
     @State private var sheet: EntrySheet?
+
+    init() {
+        let voiceState = ScreenshotConfiguration.voiceState
+        _sheet = State(initialValue: voiceState == nil || voiceState == .saved ? nil : .voice)
+    }
+
     private var monthRecords: [ExpenseRecord] { store.records.filter { $0.recordType == .expense && Calendar.current.isDate($0.date, equalTo: .now, toGranularity: .month) } }
     private var previousMonthRecords: [ExpenseRecord] {
         let date = Calendar.current.date(byAdding: .month, value: -1, to: .now)!
@@ -37,32 +43,37 @@ struct HomeView: View {
                     ActionCard(icon: "square.and.pencil", title: "手动输入", text: "快速补录，适合补充备注和时间。", colors: [Palette.manualActionTop, Palette.manualActionBottom]) { sheet = .manual }
                 }
             }
-            VStack(spacing: 12) {
-                SectionHeading(title: "今日概览", subtitle: "\(todayRecords.count) 笔支出，\(topTodayCategory)占比最高。")
-                MetricsRow(metrics: [("总支出", store.format(todayRecords.reduce(0) { $0 + $1.amount })), ("最大一笔", store.format(todayRecords.map(\.amount).max() ?? 0)), ("高频分类", topTodayCategory)])
-            }
-            VStack(spacing: 12) {
-                SectionHeading(title: "最近记录", subtitle: "按时间从新到旧排列。")
-                if store.records.isEmpty { Text("暂无记录，点击手动输入添加第一笔支出。").font(.caption).foregroundStyle(Palette.muted).softRow() }
-                ForEach(recentRecords.indices, id: \.self) { index in
-                    let record = recentRecords[index]
-                    let isOldYear = !Calendar.current.isDate(record.date, equalTo: .now, toGranularity: .year)
-                    let startsOldDay = isOldYear && (index == 0 || !Calendar.current.isDate(record.date, inSameDayAs: recentRecords[index - 1].date))
-                    if startsOldDay {
-                        let sameDay = store.records.filter { Calendar.current.isDate($0.date, inSameDayAs: record.date) }
-                        HStack { VStack(alignment: .leading, spacing: 3) { Text(store.formatDate(record.date)).font(.system(size: 15, weight: .bold)); Text(store.formatWeekday(record.date)).font(.caption).foregroundStyle(Palette.muted) }; Spacer(); VStack(alignment: .trailing) { Text(store.format(sameDay.reduce(0) { $0 + ($1.recordType == .income ? -$1.amount : $1.amount) })).bold(); Text("\(sameDay.count) 笔").font(.caption).foregroundStyle(Palette.muted) } }.softRow()
-                    }
-                    RecordRow(record: record, showsFullDate: isOldYear)
-                }
-            }
-            GlassCard {
+            AdaptiveColumns {
                 VStack(spacing: 14) {
-                    let budgeted = store.categories.compactMap { category -> (ExpenseCategory, Double)? in guard let budget = category.budget, budget > 0 else { return nil }; return (category, budget) }
-                    let highest = budgeted.map { item in (item.0, monthRecords.filter { $0.categoryID == item.0.id }.reduce(0) { $0 + $1.amount } / item.1) }.max { $0.1 < $1.1 }
-                    SectionHeading(title: "预算提醒", subtitle: highest.map { "本月\($0.0.name)预算已使用 \(Int($0.1 * 100))%。" } ?? "在分类管理中设置分类预算。", trailing: (highest?.1 ?? 0) > 1 ? "已超支" : "正常")
-                    ForEach(Array(budgeted.prefix(3)), id: \.0.id) { category, budget in
-                        let spent = monthRecords.filter { $0.categoryID == category.id }.reduce(0) { $0 + $1.amount }
-                        ProgressLine(title: category.name, value: spent / budget)
+                    VStack(spacing: 12) {
+                        SectionHeading(title: "今日概览", subtitle: "\(todayRecords.count) 笔支出，\(topTodayCategory)占比最高。")
+                        MetricsRow(metrics: [("总支出", store.format(todayRecords.reduce(0) { $0 + $1.amount })), ("最大一笔", store.format(todayRecords.map(\.amount).max() ?? 0)), ("高频分类", topTodayCategory)])
+                    }
+                    VStack(spacing: 12) {
+                        SectionHeading(title: "最近记录", subtitle: "按时间从新到旧排列。")
+                        if store.records.isEmpty { Text("暂无记录，点击手动输入添加第一笔支出。").font(.caption).foregroundStyle(Palette.muted).softRow() }
+                        ForEach(recentRecords.indices, id: \.self) { index in
+                            let record = recentRecords[index]
+                            let isOldYear = !Calendar.current.isDate(record.date, equalTo: .now, toGranularity: .year)
+                            let startsOldDay = isOldYear && (index == 0 || !Calendar.current.isDate(record.date, inSameDayAs: recentRecords[index - 1].date))
+                            if startsOldDay {
+                                let sameDay = store.records.filter { Calendar.current.isDate($0.date, inSameDayAs: record.date) }
+                                HStack { VStack(alignment: .leading, spacing: 3) { Text(store.formatDate(record.date)).font(.system(size: 15, weight: .bold)); Text(store.formatWeekday(record.date)).font(.caption).foregroundStyle(Palette.muted) }; Spacer(); VStack(alignment: .trailing) { Text(store.format(sameDay.reduce(0) { $0 + ($1.recordType == .income ? -$1.amount : $1.amount) })).bold(); Text("\(sameDay.count) 笔").font(.caption).foregroundStyle(Palette.muted) } }.softRow()
+                            }
+                            RecordRow(record: record, showsFullDate: isOldYear)
+                        }
+                    }
+                }
+            } trailing: {
+                GlassCard {
+                    VStack(spacing: 14) {
+                        let budgeted = store.categories.compactMap { category -> (ExpenseCategory, Double)? in guard let budget = category.budget, budget > 0 else { return nil }; return (category, budget) }
+                        let highest = budgeted.map { item in (item.0, monthRecords.filter { $0.categoryID == item.0.id }.reduce(0) { $0 + $1.amount } / item.1) }.max { $0.1 < $1.1 }
+                        SectionHeading(title: "预算提醒", subtitle: highest.map { "本月\($0.0.name)预算已使用 \(Int($0.1 * 100))%。" } ?? "在分类管理中设置分类预算。", trailing: (highest?.1 ?? 0) > 1 ? "已超支" : "正常")
+                        ForEach(Array(budgeted.prefix(3)), id: \.0.id) { category, budget in
+                            let spent = monthRecords.filter { $0.categoryID == category.id }.reduce(0) { $0 + $1.amount }
+                            ProgressLine(title: category.name, value: spent / budget)
+                        }
                     }
                 }
             }

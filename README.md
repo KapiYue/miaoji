@@ -124,7 +124,7 @@ Fill in `server/.env` before starting the API. Server-side secrets must never be
 Run the backend test suite:
 
 ```bash
-python -m unittest server/test_app.py
+python -m unittest server/test_app.py server/test_evaluate_omni.py
 ```
 
 Run the iOS tests from Xcode with **Product → Test**, or from the command line with an installed simulator:

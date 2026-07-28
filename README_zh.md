@@ -60,7 +60,7 @@ flowchart LR
     A["SwiftUI 客户端"] -->|"上传 M4A"| B["Flask API"]
     B --> C["Supabase Storage"]
     B -->|"音频与分类约束"| D["DashScope 多模态模型"]
-    D -->|"结构化消费草稿"| B
+    D -->|"金额、分类与日期草稿"| B
     B --> A
     A <-->|"邮箱 OTP 与账本快照"| E["Supabase Auth 与 Postgres"]
 ```
@@ -130,12 +130,14 @@ python -m flask --app app run --host 0.0.0.0 --port 8000
 
 启动前请填写 `server/.env`，服务端密钥不得提交到仓库。
 
+生产语音模型默认使用 `qwen3.5-omni-plus`。准备新录制的脱敏 M4A、对比 Plus 与 Flash 以及执行自动选型的方法，见 [`docs/qwen3.5-omni-migration-and-evaluation.md`](docs/qwen3.5-omni-migration-and-evaluation.md)。
+
 ## 测试
 
 运行后端测试：
 
 ```bash
-python -m unittest server/test_app.py
+python -m unittest server/test_app.py server/test_evaluate_omni.py
 ```
 
 可以通过 Xcode 的 **Product → Test** 运行 iOS 测试，也可以在已安装模拟器时使用命令行：

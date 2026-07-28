@@ -40,13 +40,25 @@ struct MiaoJiAccoutTests {
 
         #expect(message.contains("本地网络"))
         #expect(message.contains("同一 Wi-Fi"))
+        #expect(message.contains("192.168.5.109"))
+        #expect(message.contains("服务已启动"))
+        #expect(message.contains("Mac 当前 IP 一致"))
         #expect(message.contains("macOS 防火墙"))
+    }
+
+    @Test @MainActor func localVoiceServerDoesNotWaitForeverForConnectivity() throws {
+        let localURL = try #require(URL(string: "http://miaoji-mac.local:8000"))
+        let configuration = MiaoJiInputService.sessionConfiguration(for: localURL)
+
+        #expect(configuration.waitsForConnectivity == false)
+        #expect(configuration.timeoutIntervalForRequest == 15)
+        #expect(configuration.connectionProxyDictionary?.isEmpty == true)
     }
 
     @Test @MainActor func aiParsedExpenseDecodesServerPayload() throws {
         let categoryID = UUID()
         let payload = """
-        {"amount":45.5,"title":"午餐","category_id":"\(categoryID.uuidString)","category_name":"餐饮"}
+        {"amount":45.5,"title":"午餐","category_id":"\(categoryID.uuidString)","category_name":"餐饮","date":"2026-07-26"}
         """.data(using: .utf8)!
 
         let expense = try JSONDecoder().decode(AIParsedExpense.self, from: payload)
@@ -55,6 +67,8 @@ struct MiaoJiAccoutTests {
         #expect(expense.title == "午餐")
         #expect(expense.categoryID == categoryID)
         #expect(expense.categoryName == "餐饮")
+        #expect(expense.date == "2026-07-26")
+        #expect(expense.resolvedDate != nil)
     }
 
     @Test @MainActor func csvExportContainsAllLocalData() throws {
@@ -124,6 +138,20 @@ struct MiaoJiAccoutTests {
         )
 
         #expect(record.recordType == .income)
+    }
+
+    @Test @MainActor func screenshotModeUsesPolishedDeterministicDemoData() throws {
+        let suiteName = "MiaoJiAccoutTests.\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let store = AppStore(defaults: defaults, demoData: true)
+
+        #expect(store.monthlyBudget == 7_200)
+        #expect(store.records.count == 56)
+        #expect(store.records.contains { $0.title == "晚间花束" && $0.amount == 88 })
+        #expect(store.records.contains { $0.title == "本月收入" && $0.recordType == .income })
+        #expect(defaults.data(forKey: "MiaoJiAccout.localData.v1") == nil)
     }
 
     @Test @MainActor func loggingInAgainRestoresExistingSupabaseSnapshot() async throws {

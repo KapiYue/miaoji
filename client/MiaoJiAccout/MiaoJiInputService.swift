@@ -8,11 +8,20 @@ struct AIParsedExpense: Decodable, Equatable, Identifiable {
     let title: String
     let categoryID: UUID
     let categoryName: String
+    let date: String
 
     private enum CodingKeys: String, CodingKey {
-        case amount, title
+        case amount, title, date
         case categoryID = "category_id"
         case categoryName = "category_name"
+    }
+
+    var resolvedDate: Date? {
+        let parts = date.split(separator: "-").compactMap { Int($0) }
+        guard parts.count == 3 else { return nil }
+        return Calendar.current.date(
+            from: DateComponents(year: parts[0], month: parts[1], day: parts[2], hour: 12)
+        )
     }
 }
 
@@ -35,22 +44,24 @@ final class MiaoJiInputService: ObservableObject {
     var isBusy: Bool { isRequestingPermission || isUploading || isAnalyzing }
     var canRetry: Bool { recordedFileURL != nil && !isRecording && !isBusy }
 
-    init(apiBaseURL: URL? = nil) {
+    init(apiBaseURL: URL? = nil, screenshotState: ScreenshotVoiceState? = nil) {
         let resolvedAPIBaseURL = apiBaseURL ?? Self.configuredAPIBaseURL
+        let resolvedScreenshotState = screenshotState ?? ScreenshotConfiguration.voiceState
         self.apiBaseURL = resolvedAPIBaseURL
         if let resolvedAPIBaseURL {
-            let configuration = resolvedAPIBaseURL.isLocalDevelopmentServer
-                ? URLSessionConfiguration.ephemeral
-                : URLSessionConfiguration.default
-            configuration.waitsForConnectivity = true
-            configuration.timeoutIntervalForResource = 150
-            if resolvedAPIBaseURL.isLocalDevelopmentServer {
-                // A system or development proxy should not intercept private LAN traffic.
-                configuration.connectionProxyDictionary = [:]
-            }
-            self.urlSession = URLSession(configuration: configuration)
+            self.urlSession = URLSession(configuration: Self.sessionConfiguration(for: resolvedAPIBaseURL))
         } else {
             self.urlSession = .shared
+        }
+        switch resolvedScreenshotState {
+        case .recording:
+            isRecording = true
+            statusMessage = "正在聆听…可以连续说出多笔消费。"
+        case .analyzing:
+            isAnalyzing = true
+            statusMessage = "AI 正在理解语音并拆分记账明细…"
+        default:
+            break
         }
         Self.removeStaleRecordings()
     }
@@ -206,7 +217,7 @@ final class MiaoJiInputService: ObservableObject {
             let boundary = "Boundary-\(UUID().uuidString)"
             var request = URLRequest(url: apiBaseURL.appendingPathComponent("upload-audio"))
             request.httpMethod = "POST"
-            request.timeoutInterval = 60
+            request.timeoutInterval = apiBaseURL.isLocalDevelopmentServer ? 15 : 45
             request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
             request.setValue("Bearer \(authorizationToken)", forHTTPHeaderField: "Authorization")
             request.httpBody = Self.multipartBody(fileData: fileData, filename: fileURL.lastPathComponent, boundary: boundary)
@@ -333,7 +344,8 @@ final class MiaoJiInputService: ObservableObject {
             if apiBaseURL?.isLocalDevelopmentServer == true,
                [.cannotConnectToHost, .cannotFindHost, .networkConnectionLost, .notConnectedToInternet, .timedOut]
                 .contains(urlError.code) {
-                return "无法访问局域网记账服务。请确认手机与电脑连接同一 Wi-Fi，并在 iPhone“设置 > 隐私与安全性 > 本地网络”中允许“妙记”；仍失败时请检查 macOS 防火墙。"
+                let endpoint = apiBaseURL?.host.map { "（当前地址：\($0)）" } ?? ""
+                return "无法访问局域网记账服务\(endpoint)。请确认服务已启动、配置地址与 Mac 当前 IP 一致、手机与电脑连接同一 Wi-Fi，并在 iPhone“设置 > 隐私与安全性 > 本地网络”中允许“妙记”；仍失败时请检查 macOS 防火墙。"
             }
             if [.cannotConnectToHost, .cannotFindHost, .dnsLookupFailed, .networkConnectionLost,
                 .notConnectedToInternet, .timedOut, .secureConnectionFailed]
@@ -342,6 +354,26 @@ final class MiaoJiInputService: ObservableObject {
             }
         }
         return "\(action)失败：\(error.localizedDescription)"
+    }
+
+    static func sessionConfiguration(for apiBaseURL: URL) -> URLSessionConfiguration {
+        let isLocalDevelopmentServer = apiBaseURL.isLocalDevelopmentServer
+        let configuration = isLocalDevelopmentServer
+            ? URLSessionConfiguration.ephemeral
+            : URLSessionConfiguration.default
+
+        // `waitsForConnectivity` can leave a real device displaying the upload
+        // state for a long time when a development IP changed or the server is
+        // not running. Fail within a bounded interval and let the retained local
+        // recording drive the existing retry flow instead.
+        configuration.waitsForConnectivity = false
+        configuration.timeoutIntervalForRequest = isLocalDevelopmentServer ? 15 : 45
+        configuration.timeoutIntervalForResource = 150
+        if isLocalDevelopmentServer {
+            // A system or development proxy should not intercept private LAN traffic.
+            configuration.connectionProxyDictionary = [:]
+        }
+        return configuration
     }
 
     private static var configuredAPIBaseURL: URL? {
@@ -378,6 +410,7 @@ private extension URL {
         guard scheme?.lowercased() == "http", let host = host?.lowercased() else { return false }
         return host == "localhost"
             || host == "127.0.0.1"
+            || host.hasSuffix(".local")
             || host.hasPrefix("192.168.")
             || host.hasPrefix("10.")
             || host.range(of: #"^172\.(1[6-9]|2[0-9]|3[01])\."#, options: .regularExpression) != nil

@@ -45,6 +45,18 @@ struct ExpenseRecord: Identifiable, Codable, Hashable {
     }
 }
 
+extension Array where Element == ExpenseRecord {
+    func sortedByNewestRecord() -> [ExpenseRecord] {
+        enumerated().sorted { lhs, rhs in
+            if lhs.element.date != rhs.element.date {
+                return lhs.element.date > rhs.element.date
+            }
+            // When records share the same timestamp, the one appended later is newer.
+            return lhs.offset > rhs.offset
+        }.map { $0.element }
+    }
+}
+
 enum AppCurrency: String, Codable, CaseIterable, Identifiable {
     case cny, usd, eur, jpy, gbp
     var id: String { rawValue }

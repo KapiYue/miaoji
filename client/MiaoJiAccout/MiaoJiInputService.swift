@@ -16,12 +16,25 @@ struct AIParsedExpense: Decodable, Equatable, Identifiable {
         case categoryName = "category_name"
     }
 
-    var resolvedDate: Date? {
+    func resolvedDate(relativeTo referenceDate: Date, calendar: Calendar = .current) -> Date? {
         let parts = date.split(separator: "-").compactMap { Int($0) }
         guard parts.count == 3 else { return nil }
-        return Calendar.current.date(
-            from: DateComponents(year: parts[0], month: parts[1], day: parts[2], hour: 12)
-        )
+        let time = calendar.dateComponents([.hour, .minute, .second, .nanosecond], from: referenceDate)
+        var components = DateComponents()
+        components.calendar = calendar
+        components.timeZone = calendar.timeZone
+        components.year = parts[0]
+        components.month = parts[1]
+        components.day = parts[2]
+        components.hour = time.hour
+        components.minute = time.minute
+        components.second = time.second
+        components.nanosecond = time.nanosecond
+        return calendar.date(from: components)
+    }
+
+    var resolvedDate: Date? {
+        resolvedDate(relativeTo: .now)
     }
 }
 

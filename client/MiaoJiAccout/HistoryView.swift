@@ -18,10 +18,10 @@ struct HistoryView: View {
             let matchesAmount = Double(minimumAmount).map { record.amount >= $0 } ?? true
             let matchesDate = dateScope == 0 || (dateScope == 1 && Calendar.current.isDateInToday(record.date)) || (dateScope == 2 && Calendar.current.isDate(record.date, equalTo: .now, toGranularity: .weekOfYear))
             return matchesText && matchesCategory && matchesAmount && matchesDate
-        }.sorted { $0.date > $1.date }
+        }.sortedByNewestRecord()
     }
     private var grouped: [(Date, [ExpenseRecord])] {
-        Dictionary(grouping: filtered) { Calendar.current.startOfDay(for: $0.date) }.map { ($0.key, $0.value.sorted { $0.date > $1.date }) }.sorted { $0.0 > $1.0 }
+        Dictionary(grouping: filtered) { Calendar.current.startOfDay(for: $0.date) }.map { ($0.key, $0.value.sortedByNewestRecord()) }.sorted { $0.0 > $1.0 }
     }
     private var peakHour: String {
         let counts = Dictionary(grouping: filtered, by: { Calendar.current.component(.hour, from: $0.date) }).mapValues(\.count)
@@ -126,4 +126,3 @@ struct HistoryGroup: View {
         }
     }
 }
-

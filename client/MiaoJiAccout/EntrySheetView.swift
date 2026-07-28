@@ -264,7 +264,7 @@ struct EntrySheetView: View {
                     amount: $0.amount.formatted(.number.precision(.fractionLength(0...2))),
                     title: $0.title,
                     categoryID: $0.categoryID,
-                    date: $0.resolvedDate ?? now
+                    date: $0.resolvedDate(relativeTo: now) ?? now
                 )
             }
         }

@@ -15,7 +15,7 @@ struct HomeView: View {
         return store.records.filter { $0.recordType == .expense && Calendar.current.isDate($0.date, equalTo: date, toGranularity: .month) }
     }
     private var todayRecords: [ExpenseRecord] { store.records.filter { $0.recordType == .expense && Calendar.current.isDateInToday($0.date) } }
-    private var recentRecords: [ExpenseRecord] { Array(store.records.sorted(by: { $0.date > $1.date }).prefix(5)) }
+    private var recentRecords: [ExpenseRecord] { Array(store.records.sortedByNewestRecord().prefix(5)) }
     private var monthTotal: Double { monthRecords.reduce(0) { $0 + $1.amount } }
     private var previousMonthTotal: Double { previousMonthRecords.reduce(0) { $0 + $1.amount } }
     private var comparisonText: String {

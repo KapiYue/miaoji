@@ -69,6 +69,41 @@ struct MiaoJiAccoutTests {
         #expect(expense.categoryName == "餐饮")
         #expect(expense.date == "2026-07-26")
         #expect(expense.resolvedDate != nil)
+
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = try #require(TimeZone(identifier: "Asia/Shanghai"))
+        let referenceDate = try #require(calendar.date(
+            from: DateComponents(
+                calendar: calendar,
+                timeZone: calendar.timeZone,
+                year: 2026,
+                month: 7,
+                day: 28,
+                hour: 15,
+                minute: 42,
+                second: 37
+            )
+        ))
+        let resolvedDate = try #require(expense.resolvedDate(relativeTo: referenceDate, calendar: calendar))
+        let resolvedComponents = calendar.dateComponents([.year, .month, .day, .hour, .minute, .second], from: resolvedDate)
+        #expect(resolvedComponents.year == 2026)
+        #expect(resolvedComponents.month == 7)
+        #expect(resolvedComponents.day == 26)
+        #expect(resolvedComponents.hour == 15)
+        #expect(resolvedComponents.minute == 42)
+        #expect(resolvedComponents.second == 37)
+    }
+
+    @Test func newestRecordSortingUsesDateThenInsertionOrder() {
+        let categoryID = UUID()
+        let sharedDate = Date(timeIntervalSince1970: 1_000)
+        let first = ExpenseRecord(amount: 300, title: "键盘", note: "", categoryID: categoryID, date: sharedDate)
+        let second = ExpenseRecord(amount: 1, title: "医用棉签", note: "", categoryID: categoryID, date: sharedDate)
+        let older = ExpenseRecord(amount: 10, title: "旧记录", note: "", categoryID: categoryID, date: sharedDate.addingTimeInterval(-60))
+
+        let sorted = [older, first, second].sortedByNewestRecord()
+
+        #expect(sorted.map(\.id) == [second.id, first.id, older.id])
     }
 
     @Test @MainActor func csvExportContainsAllLocalData() throws {

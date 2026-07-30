@@ -105,6 +105,8 @@ final class AppStore: ObservableObject {
 
     private let key = "MiaoJiAccout.localData.v1"
     private let pendingCloudChangesKey = "MiaoJiAccout.pendingCloudChanges.v1"
+    private let localDataOwnerKey = "MiaoJiAccout.localDataOwner.v1"
+    private static let guestDataOwner = "guest"
     private let defaults: UserDefaults
     private let syncService: (any SupabaseSyncServicing)?
     private let isDemoMode: Bool
@@ -112,6 +114,7 @@ final class AppStore: ObservableObject {
     private var isApplyingCloudData = false
     private var hasLocalData = false
     private var hasPendingCloudChanges: Bool
+    private var localDataOwner: String?
     private var localUpdatedAt = Date.distantPast
     private var cloudUploadTask: Task<Void, Never>?
 
@@ -124,6 +127,7 @@ final class AppStore: ObservableObject {
         self.syncService = syncService
         isDemoMode = demoData
         hasPendingCloudChanges = defaults.bool(forKey: pendingCloudChangesKey)
+        localDataOwner = defaults.string(forKey: localDataOwnerKey)
         cloudSyncState = syncService == nil ? .notConfigured : .signedOut
         if demoData {
             localUpdatedAt = .now
@@ -186,9 +190,7 @@ final class AppStore: ObservableObject {
                 cloudAccountEmail = nil
                 throw error
             }
-            // An explicit login establishes Supabase as the source of truth for
-            // an existing account. This prevents a freshly seeded or stale local
-            // cache from overwriting the account's snapshot after a reinstall.
+            prepareLocalDataForExplicitLogin(email: cloudAccountEmail)
             try await reconcileWithCloud(policy: .cloud)
         } catch {
             cloudSyncState = .failed(error.localizedDescription)
@@ -211,6 +213,7 @@ final class AppStore: ObservableObject {
                 cloudAccountEmail = nil
                 throw error
             }
+            prepareLocalDataForExplicitLogin(email: cloudAccountEmail)
             try await reconcileWithCloud(policy: .cloud)
         } catch {
             cloudSyncState = .failed(error.localizedDescription)
@@ -241,9 +244,12 @@ final class AppStore: ObservableObject {
 
     func signOutCloudAccount() async {
         cloudUploadTask?.cancel()
-        await syncService?.signOut()
+        // A signed-out device must not continue displaying or reusing the last
+        // account's ledger. The cloud snapshot remains available on next login.
+        clearLocalData()
         cloudAccountEmail = nil
         cloudSyncState = syncService == nil ? .notConfigured : .signedOut
+        await syncService?.signOut()
     }
 
     func voiceAuthorizationToken() async throws -> String {
@@ -347,6 +353,9 @@ final class AppStore: ObservableObject {
         guard !isApplyingCloudData else { return }
         hasLocalData = true
         localUpdatedAt = .now
+        if localDataOwner == nil {
+            setLocalDataOwner(cloudAccountEmail.map(Self.accountDataOwner) ?? Self.guestDataOwner)
+        }
         persistLocalData()
         guard isCloudSignedIn else { return }
         setHasPendingCloudChanges(true)
@@ -373,6 +382,7 @@ final class AppStore: ObservableObject {
                 return
             }
             cloudAccountEmail = email
+            prepareLocalDataForRestoredSession(email: email)
             // A completed previous sync makes Supabase authoritative after an
             // app restart. Only a known unsent local edit may remain local-first.
             try await reconcileWithCloud(policy: hasPendingCloudChanges ? .local : .cloud)
@@ -442,6 +452,38 @@ final class AppStore: ObservableObject {
         defaults.set(value, forKey: pendingCloudChangesKey)
     }
 
+    private func prepareLocalDataForExplicitLogin(email: String?) {
+        guard let email else { return }
+        let accountOwner = Self.accountDataOwner(email)
+        // Guest data created by this version may be adopted by its first cloud
+        // account. Account-owned or legacy-unmarked data must never cross users.
+        if localDataOwner != Self.guestDataOwner && localDataOwner != accountOwner {
+            clearLocalData()
+        }
+        setLocalDataOwner(accountOwner)
+    }
+
+    private func prepareLocalDataForRestoredSession(email: String) {
+        let accountOwner = Self.accountDataOwner(email)
+        // An unmarked legacy cache can safely follow a restored Keychain session:
+        // the session proves which account was active when the app last ran.
+        if let localDataOwner,
+           localDataOwner != Self.guestDataOwner,
+           localDataOwner != accountOwner {
+            clearLocalData()
+        }
+        setLocalDataOwner(accountOwner)
+    }
+
+    private static func accountDataOwner(_ email: String) -> String {
+        "account:\(email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased())"
+    }
+
+    private func setLocalDataOwner(_ owner: String) {
+        localDataOwner = owner
+        defaults.set(owner, forKey: localDataOwnerKey)
+    }
+
     private func clearLocalData() {
         isApplyingCloudData = true
         records = []
@@ -454,6 +496,8 @@ final class AppStore: ObservableObject {
         hasLocalData = false
         localUpdatedAt = .now
         defaults.removeObject(forKey: key)
+        defaults.removeObject(forKey: localDataOwnerKey)
+        localDataOwner = nil
         setHasPendingCloudChanges(false)
     }
 

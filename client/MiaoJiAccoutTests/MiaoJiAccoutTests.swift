@@ -227,6 +227,84 @@ struct MiaoJiAccoutTests {
         #expect(syncService.didRecordPrivacyConsent)
     }
 
+    @Test @MainActor func explicitLoginDoesNotUploadAnotherAccountsLocalLedger() async throws {
+        let suiteName = "MiaoJiAccoutTests.\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let firstSyncService = FakeSupabaseSyncService(snapshot: nil)
+        let firstStore = AppStore(defaults: defaults, syncService: firstSyncService)
+        let categoryID = try #require(firstStore.categories.first?.id)
+        firstStore.records = [
+            ExpenseRecord(amount: 99, title: "上一账号的账目", note: "", categoryID: categoryID)
+        ]
+        try await firstStore.verifyCloudLoginCode(email: "first@example.com", code: "123456")
+
+        let syncService = FakeSupabaseSyncService(snapshot: nil)
+        let isolatedStore = AppStore(defaults: defaults, syncService: syncService)
+        try await isolatedStore.verifyCloudLoginCode(email: "second@example.com", code: "123456")
+
+        #expect(isolatedStore.records.isEmpty)
+        #expect(syncService.uploadedSnapshots.count == 1)
+        #expect(syncService.uploadedSnapshots.first?.records.isEmpty == true)
+    }
+
+    @Test @MainActor func firstCloudLoginKeepsGuestLedger() async throws {
+        let suiteName = "MiaoJiAccoutTests.\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let store = AppStore(defaults: defaults)
+        let categoryID = try #require(store.categories.first?.id)
+        let guestRecord = ExpenseRecord(
+            amount: 18,
+            title: "登录前的本地账目",
+            note: "",
+            categoryID: categoryID
+        )
+        store.records = [guestRecord]
+
+        let syncService = FakeSupabaseSyncService(snapshot: nil)
+        let cloudStore = AppStore(defaults: defaults, syncService: syncService)
+        try await cloudStore.verifyCloudLoginCode(email: "first@example.com", code: "123456")
+
+        #expect(cloudStore.records == [guestRecord])
+        #expect(syncService.uploadedSnapshots.first?.records == [guestRecord])
+    }
+
+    @Test @MainActor func signingOutClearsThePreviousAccountsLocalLedger() async throws {
+        let suiteName = "MiaoJiAccoutTests.\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let category = ExpenseCategory(name: "餐饮", icon: "fork.knife", colorIndex: 0)
+        let cloudRecord = ExpenseRecord(
+            amount: 36,
+            title: "账号 A 的早餐",
+            note: "",
+            categoryID: category.id
+        )
+        let cloudData = StoredData(
+            records: [cloudRecord],
+            categories: [category],
+            currency: .cny,
+            voiceRecognition: true,
+            budgetReminder: false,
+            monthlyBudget: 4_000,
+            updatedAt: .now
+        )
+        let syncService = FakeSupabaseSyncService(snapshot: cloudData)
+        let store = AppStore(defaults: defaults, syncService: syncService)
+        try await store.verifyCloudLoginCode(email: "first@example.com", code: "123456")
+
+        await store.signOutCloudAccount()
+
+        #expect(store.cloudAccountEmail == nil)
+        #expect(store.records.isEmpty)
+        #expect(defaults.data(forKey: "MiaoJiAccout.localData.v1") == nil)
+        #expect(defaults.bool(forKey: "MiaoJiAccout.pendingCloudChanges.v1") == false)
+    }
+
     @Test @MainActor func restartingWithRestoredSessionPrefersSyncedCloudSnapshot() async throws {
         let suiteName = "MiaoJiAccoutTests.\(UUID().uuidString)"
         let defaults = try #require(UserDefaults(suiteName: suiteName))

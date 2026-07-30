@@ -193,6 +193,11 @@ function renderMarkdown(markdown) {
   return output.join("\n");
 }
 
+function filingFooter() {
+  return `<p class="filing-links"><a href="https://beian.miit.gov.cn/" target="_blank" rel="noreferrer">浙ICP备2026055717号-2</a></p>
+    <!-- 公安联网备案审核通过后，在此加入浙公网安备编号、图标及备案详情链接。 -->`;
+}
+
 function layout({ title, description, body, currentPath }) {
   const navItems = [
     ["/privacy", "隐私政策"],
@@ -234,7 +239,7 @@ function layout({ title, description, body, currentPath }) {
   </main>
   <footer>
     <p>© 2026 妙记 AI 账本 · <a href="mailto:zdjoey@126.com">zdjoey@126.com</a></p>
-    <!-- 备案通过后在此加入备案号及 https://beian.miit.gov.cn/ 链接。 -->
+    ${filingFooter()}
   </footer>
 </body>
 </html>
@@ -281,7 +286,7 @@ const indexHTML = `<!doctype html>
   </main>
   <footer>
     <p>© 2026 妙记 AI 账本 · <a href="mailto:zdjoey@126.com">zdjoey@126.com</a></p>
-    <!-- 备案通过后在此加入备案号及 https://beian.miit.gov.cn/ 链接。 -->
+    ${filingFooter()}
   </footer>
 </body>
 </html>
@@ -343,6 +348,8 @@ th { background: #f7f8fa; font-weight: 750; }
 tr:last-child td { border-bottom: 0; }
 footer { padding: 28px 24px 44px; color: var(--muted); text-align: center; font-size: 13px; }
 footer p { margin: 0; }
+.filing-links { margin-top: 6px; }
+.filing-links a { color: inherit; }
 
 @media (max-width: 760px) {
   .header-inner { min-height: auto; padding-top: 13px; padding-bottom: 13px; align-items: flex-start; flex-direction: column; gap: 10px; }

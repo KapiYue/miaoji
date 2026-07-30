@@ -155,7 +155,6 @@ xcodebuild test \
 - 语音录音会上传至配置的 Supabase Storage，并发送给配置的 DashScope 模型进行解析。
 - Flask API 需要 Supabase `service_role` key，该密钥只能保存在可信服务端。
 - 漏洞报告方式请查看 [`SECURITY.md`](SECURITY.md)，RLS 配置请查看 [`supabase/README.md`](supabase/README.md)。
-- 创建 App Store Archive 前，请逐项执行 [`docs/app-store-release-checklist.md`](docs/app-store-release-checklist.md)。
 
 ## 参与贡献
 

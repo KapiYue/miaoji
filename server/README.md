@@ -59,19 +59,18 @@ cp server/.env.example server/.env
 | `DASHSCOPE_BASE_URL` | 建议 | 业务空间专属 OpenAI 兼容地址；未设置时暂时回退旧北京公共域名 |
 | `DASHSCOPE_MODEL` | 否 | 多模态模型，默认 `qwen3.5-omni-plus` |
 | `BUSINESS_TIMEZONE` | 否 | 相对日期换算时区，默认 `Asia/Shanghai` |
-| `PORT` | 否 | API 监听端口，项目统一默认 `8000`；托管平台可在运行时覆盖 |
 
 启动开发服务：
 
 ```bash
 cd server
-venv/bin/flask --app app run --host 0.0.0.0 --debug --port 8000
+venv/bin/flask --app app run --host 0.0.0.0 --port 8000
 ```
 
 检查服务：
 
 ```bash
-curl http://127.0.0.1:8000/healthz
+curl http://127.0.0.1:8080/healthz
 ```
 
 ## 测试
@@ -90,12 +89,12 @@ server/venv/bin/python -m unittest server/test_app.py server/test_evaluate_omni.
 
 ```bash
 docker build -t miaoji-server server
-docker run --rm -p 8000:8000 \
+docker run --rm -p 8080:8080 \
   --env-file server/.env \
   miaoji-server
 ```
 
-容器使用非 root 用户运行 Gunicorn，默认监听 `$PORT`（镜像默认值为 `8000`）。若托管平台注入其他 `$PORT`，Gunicorn 会自动遵循平台值；客户端仍应访问反向代理暴露的正式 HTTPS 地址，而不是容器内部端口。
+容器使用非 root 用户运行 Gunicorn，默认监听 `$PORT`（镜像默认值为 `8080`）。生产环境应由平台 Secret 管理注入变量，并在负载均衡器或反向代理处启用 HTTPS。
 
 ## App Store 审核账号
 

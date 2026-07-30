@@ -142,7 +142,6 @@ xcodebuild test \
 - Voice recordings are uploaded to the configured Supabase Storage bucket and sent to the configured DashScope model for parsing.
 - The Flask API requires the Supabase `service_role` key; keep it exclusively on a trusted server.
 - Review `[SECURITY.md](SECURITY.md)` for vulnerability reporting and `[supabase/README.md](supabase/README.md)` for RLS setup.
-- Follow `[docs/app-store-release-checklist.md](docs/app-store-release-checklist.md)` before creating an App Store archive.
 
 ## Contributing
 

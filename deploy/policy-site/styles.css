@@ -54,6 +54,8 @@ th { background: #f7f8fa; font-weight: 750; }
 tr:last-child td { border-bottom: 0; }
 footer { padding: 28px 24px 44px; color: var(--muted); text-align: center; font-size: 13px; }
 footer p { margin: 0; }
+.filing-links { margin-top: 6px; }
+.filing-links a { color: inherit; }
 
 @media (max-width: 760px) {
   .header-inner { min-height: auto; padding-top: 13px; padding-bottom: 13px; align-items: flex-start; flex-direction: column; gap: 10px; }

@@ -136,3 +136,18 @@ venv/
 
 # Supabase CLI local link and runtime metadata
 /supabase/.temp/
+
+# ==============================
+# Maintainer-only docs (local ops, filing, release notes)
+# ==============================
+HANDOFF.md
+docs/app-store-metadata-zh-CN.md
+docs/app-store-release-checklist.md
+docs/app-store-screenshot-guide.md
+docs/policy-site-deployment.md
+docs/tencent-cloud-ssl-deployment.md
+docs/public-security-app-filing.md
+docs/public-security-website-filing.md
+
+# Deployment configs (server-specific)
+deploy/nginx/

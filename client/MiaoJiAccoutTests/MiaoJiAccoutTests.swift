@@ -111,6 +111,18 @@ struct MiaoJiAccoutTests {
         #expect(resolvedComponents.second == 37)
     }
 
+    @Test @MainActor func aiParsedExpenseAcceptsLegacyPayloadWithoutDate() throws {
+        let categoryID = UUID()
+        let payload = """
+        {"amount":45.5,"title":"午餐","category_id":"\(categoryID.uuidString)","category_name":"餐饮"}
+        """.data(using: .utf8)!
+
+        let expense = try JSONDecoder().decode(AIParsedExpense.self, from: payload)
+
+        #expect(expense.date == nil)
+        #expect(expense.resolvedDate == nil)
+    }
+
     @Test func newestRecordSortingUsesDateThenInsertionOrder() {
         let categoryID = UUID()
         let sharedDate = Date(timeIntervalSince1970: 1_000)

@@ -8,7 +8,7 @@ struct AIParsedExpense: Decodable, Equatable, Identifiable {
     let title: String
     let categoryID: UUID
     let categoryName: String
-    let date: String
+    let date: String?
 
     private enum CodingKeys: String, CodingKey {
         case amount, title, date
@@ -17,6 +17,7 @@ struct AIParsedExpense: Decodable, Equatable, Identifiable {
     }
 
     func resolvedDate(relativeTo referenceDate: Date, calendar: Calendar = .current) -> Date? {
+        guard let date else { return nil }
         let parts = date.split(separator: "-").compactMap { Int($0) }
         guard parts.count == 3 else { return nil }
         let time = calendar.dateComponents([.hour, .minute, .second, .nanosecond], from: referenceDate)

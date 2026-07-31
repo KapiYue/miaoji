@@ -2,6 +2,19 @@
 
 `server` 是妙记 iOS 客户端的受信任后端。它验证 Supabase 登录态、把录音暂存到私有 Storage，并通过阿里云 DashScope 将一段 M4A 语音转换为结构化账目。Supabase Secret Key 和 DashScope API Key 只允许出现在服务端。
 
+本地联调使用本机 Flask 和线上 Supabase，不需要启动本地 Supabase：
+
+```text
+iOS ── Mac Flask :8000 ── 线上 Supabase Auth / Storage
+                    └──── DashScope
+
+iOS ───────────────────── 线上 Supabase Auth / Postgres（账本同步）
+```
+
+模拟器把 `MIAOJI_API_BASE_URL` 配置为 `http://127.0.0.1:8000`；真机改用
+Mac 的 Bonjour `.local` 主机名并与 Mac 保持在同一局域网。客户端的
+`SUPABASE_URL` 始终指向线上 HTTPS 项目，只有语音 API 指向本机 Flask。
+
 ## 接口
 
 | 方法 | 路径 | 鉴权 | 说明 |
@@ -41,7 +54,7 @@ Authorization: Bearer <SUPABASE_ACCESS_TOKEN>
 
 ## 本地运行
 
-要求 Python 3.13（与 Docker 镜像一致）。以下命令从仓库根目录执行：
+要求 Python 3.13（与 Docker 镜像一致）。首次运行时从仓库根目录执行：
 
 ```bash
 python3 -m venv server/venv
@@ -53,24 +66,26 @@ cp server/.env.example server/.env
 
 | 变量 | 必填 | 用途 |
 | --- | --- | --- |
-| `SUPABASE_URL` | 是 | Supabase 项目 URL |
+| `SUPABASE_URL` | 是 | 线上 Supabase 项目的 HTTPS URL |
 | `SUPABASE_SECRET_KEY` | 是 | 服务端 Secret Key；禁止放入客户端或提交 Git |
 | `DASHSCOPE_API_KEY` | 是 | 与接入地域一致的 DashScope API 凭据 |
 | `DASHSCOPE_BASE_URL` | 建议 | 业务空间专属 OpenAI 兼容地址；未设置时暂时回退旧北京公共域名 |
 | `DASHSCOPE_MODEL` | 否 | 多模态模型，默认 `qwen3.5-omni-plus` |
 | `BUSINESS_TIMEZONE` | 否 | 相对日期换算时区，默认 `Asia/Shanghai` |
 
-启动开发服务：
+配置完成后，日常联调只需在仓库根目录启动开发服务：
 
 ```bash
-cd server
-venv/bin/flask --app app run --host 0.0.0.0 --port 8000
+make server-start
 ```
+
+该命令固定监听 `0.0.0.0:8000`，并由 Flask 读取 `server/.env` 后连接线上
+Supabase。生产部署仍应通过托管平台注入同名环境变量。
 
 检查服务：
 
 ```bash
-curl http://127.0.0.1:8080/healthz
+curl http://127.0.0.1:8000/healthz
 ```
 
 ## 测试
@@ -78,7 +93,7 @@ curl http://127.0.0.1:8080/healthz
 测试使用本地假 Supabase 和假 AI 响应，不会访问生产数据：
 
 ```bash
-server/venv/bin/python -m unittest server/test_app.py server/test_evaluate_omni.py
+make server-test
 ```
 
 ## 模型迁移评测
@@ -89,12 +104,12 @@ server/venv/bin/python -m unittest server/test_app.py server/test_evaluate_omni.
 
 ```bash
 docker build -t miaoji-server server
-docker run --rm -p 8080:8080 \
+docker run --rm -p 8000:8000 \
   --env-file server/.env \
   miaoji-server
 ```
 
-容器使用非 root 用户运行 Gunicorn，默认监听 `$PORT`（镜像默认值为 `8080`）。生产环境应由平台 Secret 管理注入变量，并在负载均衡器或反向代理处启用 HTTPS。
+容器使用非 root 用户运行 Gunicorn，默认监听 `$PORT`（镜像默认值为 `8000`）。生产环境应由平台 Secret 管理注入变量，并在负载均衡器或反向代理处启用 HTTPS。
 
 ## App Store 审核账号
 

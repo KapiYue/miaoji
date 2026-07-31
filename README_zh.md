@@ -115,20 +115,40 @@ SUPABASE_URL = https:/$()/YOUR_PROJECT.supabase.co
 SUPABASE_PUBLISHABLE_KEY = YOUR_PUBLISHABLE_KEY
 ```
 
+模拟器使用 `127.0.0.1`；真机联调时只需把 `MIAOJI_API_BASE_URL` 改为 Mac
+的 Bonjour 主机名，例如 `http:/$()/你的主机名.local:8000`，并确保 iPhone
+和 Mac 位于同一局域网。`SUPABASE_URL` 始终保持为线上项目的 HTTPS 地址：
+客户端直接连接线上 Supabase 完成登录和账本同步，只有语音 API 经过本机 Flask。
+
 不要把 Supabase `service_role` key 放入 iOS 应用。使用 Xcode 打开 [`client/MiaoJiAccout.xcodeproj`](client/MiaoJiAccout.xcodeproj)，选择 `MiaoJiAccout` Scheme 后在模拟器或真机运行。
 
-### 4. 启动 API
+### 4. 启动本地联调 API
+
+首次运行时安装服务端依赖并创建本地配置：
 
 ```bash
-cd server
-python3 -m venv venv
-source venv/bin/activate
-python -m pip install -r requirements.txt
-cp .env.example .env
-python -m flask --app app run --host 0.0.0.0 --port 8000
+python3 -m venv server/venv
+server/venv/bin/pip install -r server/requirements.txt
+cp server/.env.example server/.env
 ```
 
-启动前请填写 `server/.env`，服务端密钥不得提交到仓库。
+在 `server/.env` 中填写线上 Supabase 项目的 `SUPABASE_URL` 和
+`SUPABASE_SECRET_KEY`，以及 DashScope 配置。服务端密钥不得写入客户端或提交到仓库。
+
+配置完成后，日常本地联调只需从仓库根目录执行：
+
+```bash
+make server-start
+```
+
+该命令会在 `0.0.0.0:8000` 启动 Flask。iOS 客户端连接本地 Flask，Flask
+使用 `server/.env` 中的线上 Supabase 配置完成登录态校验和私有 Storage
+访问；不会启动或依赖本地 Supabase。
+
+```text
+iOS ── Mac Flask :8000 ── 线上 Supabase Auth / Storage
+                    └──── DashScope
+```
 
 生产语音模型默认使用 `qwen3.5-omni-plus`。准备新录制的脱敏 M4A、对比 Plus 与 Flash 以及执行自动选型的方法，见 [`docs/qwen3.5-omni-migration-and-evaluation.md`](docs/qwen3.5-omni-migration-and-evaluation.md)。
 
@@ -137,7 +157,7 @@ python -m flask --app app run --host 0.0.0.0 --port 8000
 运行后端测试：
 
 ```bash
-python -m unittest server/test_app.py server/test_evaluate_omni.py
+make server-test
 ```
 
 可以通过 Xcode 的 **Product → Test** 运行 iOS 测试，也可以在已安装模拟器时使用命令行：

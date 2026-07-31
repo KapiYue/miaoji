@@ -17,7 +17,7 @@ For a substantial feature or architecture change, open an issue before implement
 
 ## Development setup
 
-Follow the setup instructions in [README.md](README.md). Keep client-safe publishable values in `client/MiaoJiConfig.xcconfig` and server-only credentials in `server/.env`. Never commit API keys, `service_role` credentials, user recordings, or real ledger exports.
+Follow the setup instructions in [README.md](README.md). Keep client-safe publishable values in `client/MiaoJiConfig.xcconfig` and server-only credentials in `server/.env`. Local integration uses `make server-start` to run Flask on port 8000 against the hosted Supabase project configured there. Never commit API keys, `service_role` credentials, user recordings, or real ledger exports.
 
 ## Branches and commits
 
@@ -54,7 +54,7 @@ Follow the setup instructions in [README.md](README.md). Keep client-safe publis
 Before opening a pull request, run the relevant checks:
 
 ```bash
-python -m unittest server/test_app.py
+make server-test
 ```
 
 Run iOS tests from Xcode with **Product → Test**. If a change affects layout, verify it on at least one compact iPhone and one iPad or explain why that was not possible.

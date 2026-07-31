@@ -104,27 +104,47 @@ SUPABASE_URL = https:/$()/YOUR_PROJECT.supabase.co
 SUPABASE_PUBLISHABLE_KEY = YOUR_PUBLISHABLE_KEY
 ```
 
+Use `127.0.0.1` for the iOS Simulator. For a physical iPhone, replace only
+`MIAOJI_API_BASE_URL` with the Mac's Bonjour hostname, for example
+`http:/$()/your-mac.local:8000`, and keep the phone and Mac on the same local
+network. Always leave `SUPABASE_URL` pointed at the hosted HTTPS project: the
+client connects to hosted Supabase directly for authentication and ledger sync,
+while only the voice API uses the local Flask process.
+
 Never place a Supabase `service_role` key in the iOS application. Open `[client/MiaoJiAccout.xcodeproj](client/MiaoJiAccout.xcodeproj)` in Xcode, select the `MiaoJiAccout` scheme, and run it on a simulator or device.
 
-### 4. Run the API
+### 4. Run the local integration API
+
+Install the server dependencies and create the local configuration once:
 
 ```bash
-cd server
-python3 -m venv venv
-source venv/bin/activate
-python -m pip install -r requirements.txt
-cp .env.example .env
-python -m flask --app app run --host 0.0.0.0 --port 8000
+python3 -m venv server/venv
+server/venv/bin/pip install -r server/requirements.txt
+cp server/.env.example server/.env
 ```
 
-Fill in `server/.env` before starting the API. Server-side secrets must never be committed.
+Set `SUPABASE_URL` and `SUPABASE_SECRET_KEY` in `server/.env` to the hosted
+Supabase project, then add the DashScope configuration. Never copy server-side
+secrets into the client or commit them.
+
+After the one-time setup, local integration only requires this command from the
+repository root:
+
+```bash
+make server-start
+```
+
+It starts Flask on `0.0.0.0:8000`. The iOS client talks to the local Flask
+process, while Flask validates sessions and accesses private Storage through the
+hosted Supabase project configured in `server/.env`; no local Supabase stack is
+started or required.
 
 ## Tests
 
 Run the backend test suite:
 
 ```bash
-python -m unittest server/test_app.py server/test_evaluate_omni.py
+make server-test
 ```
 
 Run the iOS tests from Xcode with **Product → Test**, or from the command line with an installed simulator:

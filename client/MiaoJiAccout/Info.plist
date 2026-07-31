@@ -10,14 +10,14 @@
 		<true/>
 	</dict>
 	<key>PRIVACY_POLICY_URL</key>
-	<string>https://github.com/KapiYue/miaoji/blob/main/docs/privacy-policy.md</string>
+	<string>https://miaoji.joy-coder.com/privacy</string>
 	<key>SUPABASE_PUBLISHABLE_KEY</key>
 	<string>$(SUPABASE_PUBLISHABLE_KEY)</string>
 	<key>SUPABASE_URL</key>
 	<string>$(SUPABASE_URL)</string>
 	<key>SUPPORT_URL</key>
-	<string>https://github.com/KapiYue/miaoji/blob/main/docs/support.md</string>
+	<string>https://miaoji.joy-coder.com/support</string>
 	<key>TERMS_OF_SERVICE_URL</key>
-	<string>https://github.com/KapiYue/miaoji/blob/main/docs/terms-of-service.md</string>
+	<string>https://miaoji.joy-coder.com/terms</string>
 </dict>
 </plist>

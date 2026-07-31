@@ -14,6 +14,7 @@ Icon
 # ==============================
 build/
 DerivedData/
+.derived-data-*/
 *.moved-aside
 *.pbxuser
 *.mode1v3
@@ -34,7 +35,8 @@ xcuserdata/
 *.hmap
 
 ## Local app configuration
-/client/MiaoJiConfig.xcconfig
+# The production client config is checked in so Xcode Cloud archives receive it.
+# Publishable/anon keys are public client credentials; server secrets remain ignored.
 
 ## Playgrounds
 timeline.xctimeline

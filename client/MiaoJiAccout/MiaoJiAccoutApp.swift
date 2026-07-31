@@ -15,6 +15,7 @@ struct MiaoJiAccoutApp: App {
     init() {
         let screenshotMode = ProcessInfo.processInfo.arguments.contains("--screenshot-demo-data")
         if screenshotMode { UserDefaults.standard.set(false, forKey: "isDarkMode") }
+        if !screenshotMode { SupabaseSyncService.prepareSessionForAppLaunch() }
         _store = StateObject(
             wrappedValue: AppStore(
                 syncService: screenshotMode ? nil : SupabaseSyncService.configured(),

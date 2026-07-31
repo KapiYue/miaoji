@@ -12,6 +12,23 @@ import AVFoundation
 
 struct MiaoJiAccoutTests {
 
+    @Test @MainActor func freshInstallationClearsPersistedSessionOnlyOnce() throws {
+        let suiteName = "MiaoJiAccoutTests.\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        var clearCount = 0
+
+        SupabaseSyncService.prepareSessionForAppLaunch(defaults: defaults) {
+            clearCount += 1
+        }
+        SupabaseSyncService.prepareSessionForAppLaunch(defaults: defaults) {
+            clearCount += 1
+        }
+
+        #expect(clearCount == 1)
+        #expect(defaults.bool(forKey: SupabaseSyncService.installationMarkerKey))
+    }
+
     @Test func emailOTPValidationSupportsConfiguredLengthsAndLeadingZeros() {
         #expect(EmailOTPCode.isValid("123456"))
         #expect(EmailOTPCode.isValid("00147955"))

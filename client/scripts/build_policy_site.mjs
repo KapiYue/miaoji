@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -194,8 +194,11 @@ function renderMarkdown(markdown) {
 }
 
 function filingFooter() {
-  return `<p class="filing-links"><a href="https://beian.miit.gov.cn/" target="_blank" rel="noreferrer">浙ICP备2026055717号-2</a></p>
-    <!-- 公安联网备案审核通过后，在此加入浙公网安备编号、图标及备案详情链接。 -->`;
+  return `<p class="filing-links">
+      <a href="https://beian.miit.gov.cn/" target="_blank" rel="noreferrer">浙ICP备2026055717号-2</a>
+      <span aria-hidden="true"> · </span>
+      <a class="police-filing-link" href="https://beian.mps.gov.cn/#/query/webSearch?code=33010502013311" target="_blank" rel="noreferrer"><img src="/assets/备案图标.png" alt="" width="20" height="20">浙公网安备33010502013311号</a>
+    </p>`;
 }
 
 function layout({ title, description, body, currentPath }) {
@@ -350,6 +353,8 @@ footer { padding: 28px 24px 44px; color: var(--muted); text-align: center; font-
 footer p { margin: 0; }
 .filing-links { margin-top: 6px; }
 .filing-links a { color: inherit; }
+.police-filing-link { display: inline-flex; align-items: center; gap: 4px; }
+.police-filing-link img { display: block; width: 20px; height: 20px; object-fit: contain; }
 
 @media (max-width: 760px) {
   .header-inner { min-height: auto; padding-top: 13px; padding-bottom: 13px; align-items: flex-start; flex-direction: column; gap: 10px; }
@@ -370,6 +375,11 @@ footer p { margin: 0; }
 
 await rm(outputDirectory, { recursive: true, force: true });
 await mkdir(outputDirectory, { recursive: true });
+await mkdir(path.join(outputDirectory, "assets"), { recursive: true });
+await copyFile(
+  path.join(repositoryRoot, "docs/assets/备案图标.png"),
+  path.join(outputDirectory, "assets/备案图标.png"),
+);
 await writeFile(path.join(outputDirectory, "index.html"), indexHTML);
 await writeFile(path.join(outputDirectory, "styles.css"), styles);
 

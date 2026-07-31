@@ -117,6 +117,10 @@ struct SettingsView: View {
                     }
                     SettingsCard(title: "关于", subtitle: "版本信息、隐私和服务协议。") {
                         Button { aboutPage = .version } label: { AboutRow(title: "版本", subtitle: AppMetadata.versionDescription) }.buttonStyle(.plain)
+                        if let icpFilingURL = AppMetadata.icpFilingURL {
+                            Link(destination: icpFilingURL) { AboutRow(title: "ICP备案", subtitle: AppMetadata.icpFilingNumber) }
+                                .buttonStyle(.plain)
+                        }
                         Button { aboutPage = .privacy } label: { AboutRow(title: "隐私政策", subtitle: "查看数据收集和存储说明") }.buttonStyle(.plain)
                         Button { aboutPage = .agreement } label: { AboutRow(title: "用户协议", subtitle: "查看使用条款") }.buttonStyle(.plain)
                         if let supportURL = AppMetadata.supportURL {
@@ -516,6 +520,8 @@ enum AppMetadata {
     static let privacyPolicyURL = configuredURL(for: "PRIVACY_POLICY_URL")
     static let termsURL = configuredURL(for: "TERMS_OF_SERVICE_URL")
     static let supportURL = configuredURL(for: "SUPPORT_URL")
+    static let icpFilingNumber = "浙ICP备2026055717号-1A"
+    static let icpFilingURL = URL(string: "https://beian.miit.gov.cn/")
 
     private static func configuredURL(for key: String) -> URL? {
         guard let value = Bundle.main.object(forInfoDictionaryKey: key) as? String,
@@ -531,7 +537,7 @@ struct AboutDetail: View {
     var text: String {
         switch page {
         case .version:
-            "\(AppMetadata.versionDescription)\n\n账目保留本地离线缓存；登录后可同步到云端。"
+            "\(AppMetadata.versionDescription)\n\nICP备案号：\(AppMetadata.icpFilingNumber)\n\n账目保留本地离线缓存；登录后可同步到云端。"
         case .privacy:
             "账目、分类和设置默认保存在设备本地。登录云同步后，邮箱地址、账号标识和账本会用于跨设备同步。使用语音记账时，录音会经妙记服务端临时存储，并发送给阿里云百炼用于生成记账草稿；每次解析尝试结束后服务端会删除临时录音，本机会删除已成功解析或已取消的录音。妙记不进行广告跟踪，也不出售个人数据。你可以导出账本、清除记录，或在设置中永久删除账号及关联数据。"
         case .agreement:

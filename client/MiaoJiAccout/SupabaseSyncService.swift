@@ -84,6 +84,8 @@ protocol SupabaseSyncServicing: AnyObject {
 }
 
 final class SupabaseSyncService: SupabaseSyncServicing {
+    static let installationMarkerKey = "MiaoJiAccout.installationInitialized.v1"
+
     private struct User: Codable {
         let id: UUID
         let email: String?
@@ -170,6 +172,19 @@ final class SupabaseSyncService: SupabaseSyncServicing {
     init(configuration: SupabaseConfiguration, session: URLSession? = nil) {
         self.configuration = configuration
         self.session = session ?? Self.makeSession()
+    }
+
+    static func prepareSessionForAppLaunch(
+        defaults: UserDefaults = .standard,
+        clearPersistedSession: () -> Void = { SupabaseSessionKeychain().delete() }
+    ) {
+        guard !defaults.bool(forKey: installationMarkerKey) else { return }
+
+        // UserDefaults is removed when the app is uninstalled, while Keychain
+        // items may survive. A missing marker therefore identifies a fresh
+        // installation and prevents an old account from being restored.
+        clearPersistedSession()
+        defaults.set(true, forKey: installationMarkerKey)
     }
 
     static func configured(bundle: Bundle = .main) -> SupabaseSyncService? {

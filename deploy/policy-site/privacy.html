@@ -37,7 +37,7 @@
 <ul><li>本地账本默认存储在你的 iPhone 上。</li><li>麦克风权限只在你主动使用语音记账时请求；拒绝后仍可手动记账。</li><li>本地登录令牌存储在 iOS 钥匙串。</li><li>CSV 文件仅在你主动导出时生成，导出后的保管和分享由你控制。</li></ul>
 <h2>3. 委托处理和第三方服务</h2>
 <p>为提供在线功能，我们使用以下服务商，并只提供实现相应功能所需的数据：</p>
-<ol><li><strong>Supabase Pte. Ltd（新加坡）</strong>：提供邮箱登录、账号鉴权、账本快照数据库及语音文件临时存储。处理的信息包括邮箱、用户标识、登录信息、账本快照和用户主动提交的录音。其<a href="https://supabase.com/privacy" target="_blank" rel="noreferrer">隐私政策</a>和<a href="https://supabase.com/downloads/docs/Supabase%2BDPA%2B260601.pdf" target="_blank" rel="noreferrer">数据处理附录</a>适用。联系地址：65 Chulia Street #38-02/03, OCBC Centre, Singapore 049513；隐私联系邮箱：privacy@supabase.io。</li><li><strong>通义云启（杭州）信息技术有限公司（阿里云百炼，中国大陆）</strong>：对用户主动提交的录音进行语音理解并生成结构化记账草稿。处理的信息包括录音内容及当前分类名称，不包含你的邮箱和完整账本。其<a href="https://terms.alicdn.com/legal-agreement/terms/privacy_policy_full/20230801173543354/20230801173543354.html" target="_blank" rel="noreferrer">阿里云百炼隐私政策</a>适用。</li><li><strong>腾讯云（中国大陆，北京，计划中的正式服务部署）</strong>：运行妙记 API，负责鉴权、接收录音、协调临时存储和调用百炼。正式发布前将以实际购买和备案完成的资源为准更新本项。</li><li><strong>Apple</strong>：提供 App Store 分发、系统权限、崩溃或诊断能力；Apple 按其政策处理相关信息。</li></ol>
+<ol><li><strong>Supabase Pte. Ltd（新加坡）</strong>：提供邮箱登录、账号鉴权、账本快照数据库及语音文件临时存储。处理的信息包括邮箱、用户标识、登录信息、账本快照和用户主动提交的录音。其<a href="https://supabase.com/privacy" target="_blank" rel="noreferrer">隐私政策</a>和<a href="https://supabase.com/downloads/docs/Supabase%2BDPA%2B260601.pdf" target="_blank" rel="noreferrer">数据处理附录</a>适用。联系地址：65 Chulia Street #38-02/03, OCBC Centre, Singapore 049513；隐私联系邮箱：privacy@supabase.io。</li><li><strong>通义云启（杭州）信息技术有限公司（阿里云百炼，中国大陆）</strong>：对用户主动提交的录音进行语音理解并生成结构化记账草稿。处理的信息包括录音内容及当前分类名称，不包含你的邮箱和完整账本。其<a href="https://terms.alicdn.com/legal-agreement/terms/privacy_policy_full/20230801173543354/20230801173543354.html" target="_blank" rel="noreferrer">阿里云百炼隐私政策</a>适用。</li><li><strong>腾讯云（中国大陆，北京）</strong>：运行妙记生产 API，负责鉴权、接收录音、协调临时存储和调用百炼；服务已通过备案域名 <code>miaoji.joy-coder.com</code> 使用 HTTPS 对外提供。</li><li><strong>Apple</strong>：提供 App Store 分发、系统权限、崩溃或诊断能力；Apple 按其政策处理相关信息。</li></ol>
 <p>第三方服务商可能依法使用其分包处理方。我们会依据服务协议、安全能力和最小必要原则选择服务商；服务商或处理地区发生实质变化时，我们会更新本政策，并在依法需要时重新征求同意。</p>
 <h2>4. 个人信息跨境传输</h2>
 <p>当你主动开启云同步或语音记账时，邮箱、账号标识、账本快照以及你主动提交的录音会传输至位于<strong>新加坡</strong>的 Supabase 项目。目的分别是账号鉴权、账本同步与恢复、录音临时存储；传输方式为加密的 HTTPS 网络连接。录音随后通过限时访问地址交由中国大陆的阿里云百炼解析。</p>
@@ -60,8 +60,11 @@
   </main>
   <footer>
     <p>© 2026 妙记 AI 账本 · <a href="mailto:zdjoey@126.com">zdjoey@126.com</a></p>
-    <p class="filing-links"><a href="https://beian.miit.gov.cn/" target="_blank" rel="noreferrer">浙ICP备2026055717号-2</a></p>
-    <!-- 公安联网备案审核通过后，在此加入浙公网安备编号、图标及备案详情链接。 -->
+    <p class="filing-links">
+      <a href="https://beian.miit.gov.cn/" target="_blank" rel="noreferrer">浙ICP备2026055717号-2</a>
+      <span aria-hidden="true"> · </span>
+      <a class="police-filing-link" href="https://beian.mps.gov.cn/#/query/webSearch?code=33010502013311" target="_blank" rel="noreferrer"><img src="/assets/备案图标.png" alt="" width="20" height="20">浙公网安备33010502013311号</a>
+    </p>
   </footer>
 </body>
 </html>

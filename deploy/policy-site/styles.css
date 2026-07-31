@@ -56,6 +56,8 @@ footer { padding: 28px 24px 44px; color: var(--muted); text-align: center; font-
 footer p { margin: 0; }
 .filing-links { margin-top: 6px; }
 .filing-links a { color: inherit; }
+.police-filing-link { display: inline-flex; align-items: center; gap: 4px; }
+.police-filing-link img { display: block; width: 20px; height: 20px; object-fit: contain; }
 
 @media (max-width: 760px) {
   .header-inner { min-height: auto; padding-top: 13px; padding-bottom: 13px; align-items: flex-start; flex-direction: column; gap: 10px; }

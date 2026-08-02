@@ -217,7 +217,7 @@ function layout({ title, description, body, currentPath }) {
   <meta name="theme-color" content="#111827">
   <link rel="canonical" href="https://miaoji.joy-coder.com${currentPath}">
   <link rel="stylesheet" href="/styles.css">
-  <title>${escapeHTML(title)}｜妙记 AI 账本</title>
+  <title>个人应用使用说明｜妙记 AI 账本 - ${escapeHTML(title)}</title>
 </head>
 <body>
   <a class="skip-link" href="#main">跳到正文</a>
@@ -258,7 +258,7 @@ const indexHTML = `<!doctype html>
   <meta name="theme-color" content="#111827">
   <link rel="canonical" href="https://miaoji.joy-coder.com/">
   <link rel="stylesheet" href="/styles.css">
-  <title>妙记 AI 账本｜政策与支持</title>
+  <title>个人应用使用说明｜妙记 AI 账本</title>
 </head>
 <body>
   <a class="skip-link" href="#main">跳到正文</a>
@@ -289,6 +289,50 @@ const indexHTML = `<!doctype html>
   </main>
   <footer>
     <p>© 2026 妙记 AI 账本 · <a href="mailto:zdjoey@126.com">zdjoey@126.com</a></p>
+    ${filingFooter()}
+  </footer>
+</body>
+</html>
+`;
+
+const portalHTML = `<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="joy-coder 个人应用使用说明，收录妙记 AI 账本与词鲸背单词的隐私政策、用户协议与支持页面。">
+  <meta name="theme-color" content="#111827">
+  <link rel="canonical" href="https://joy-coder.com/">
+  <link rel="stylesheet" href="/styles.css">
+  <title>个人应用使用说明｜joy-coder</title>
+</head>
+<body>
+  <a class="skip-link" href="#main">跳到正文</a>
+  <header class="site-header">
+    <div class="header-inner">
+      <a class="brand" href="/" aria-label="joy-coder 首页">
+        <span class="brand-mark" aria-hidden="true">J</span>
+        <span><strong>joy-coder</strong><small>个人应用</small></span>
+      </a>
+      <nav aria-label="应用站点">
+        <a href="https://miaoji.joy-coder.com">妙记 AI 账本</a>
+        <a href="https://cijing.joy-coder.com">词鲸背单词</a>
+      </nav>
+    </div>
+  </header>
+  <main id="main" class="home-shell">
+    <section class="hero">
+      <p class="eyebrow">个人开发 · 独立应用</p>
+      <h1>个人应用使用说明</h1>
+      <p>查看各应用的隐私政策、用户协议与支持方式。</p>
+    </section>
+    <section class="link-grid link-grid-2" aria-label="应用列表">
+      <a class="link-card" href="https://miaoji.joy-coder.com"><span>01</span><h2>妙记 AI 账本</h2><p>本地优先的 AI 记账应用。查看隐私政策、用户协议与支持说明。</p><strong>进入站点 →</strong></a>
+      <a class="link-card" href="https://cijing.joy-coder.com"><span>02</span><h2>词鲸背单词</h2><p>背单词应用。查看隐私政策、使用条款与支持说明。</p><strong>进入站点 →</strong></a>
+    </section>
+  </main>
+  <footer>
+    <p>© 2026 joy-coder · <a href="mailto:zdjoey@126.com">zdjoey@126.com</a></p>
     ${filingFooter()}
   </footer>
 </body>
@@ -329,6 +373,7 @@ nav a:hover, nav a[aria-current="page"] { color: var(--ink); background: var(--a
 .hero h1 { margin: 0; font-size: clamp(42px, 8vw, 76px); line-height: 1.06; letter-spacing: -.045em; }
 .hero > p:last-child { max-width: 620px; margin: 20px 0 0; color: var(--muted); font-size: clamp(18px, 2.4vw, 22px); }
 .link-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; }
+.link-grid-2 { grid-template-columns: repeat(2, 1fr); max-width: 760px; }
 .link-card { min-height: 270px; padding: 28px; display: flex; flex-direction: column; color: var(--ink); background: var(--paper); border: 1px solid var(--line); border-radius: 20px; text-decoration: none; box-shadow: 0 12px 36px rgba(17,24,39,.05); transition: transform .18s ease, box-shadow .18s ease; }
 .link-card:hover { color: var(--ink); transform: translateY(-3px); box-shadow: 0 18px 44px rgba(17,24,39,.1); }
 .link-card > span { color: var(--accent); font-size: 13px; font-weight: 800; }
@@ -412,4 +457,19 @@ await writeFile(
 `,
 );
 
+const portalDirectory = path.join(repositoryRoot, "deploy/portal-site");
+await rm(portalDirectory, { recursive: true, force: true });
+await mkdir(path.join(portalDirectory, "assets"), { recursive: true });
+await copyFile(
+  path.join(repositoryRoot, "docs/assets/备案图标.png"),
+  path.join(portalDirectory, "assets/备案图标.png"),
+);
+await writeFile(path.join(portalDirectory, "index.html"), portalHTML);
+await writeFile(path.join(portalDirectory, "styles.css"), styles);
+await writeFile(
+  path.join(portalDirectory, "robots.txt"),
+  "User-agent: *\nAllow: /\n",
+);
+
 console.log(`Policy site generated at ${outputDirectory}`);
+console.log(`Portal site generated at ${portalDirectory}`);

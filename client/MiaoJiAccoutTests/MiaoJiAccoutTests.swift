@@ -48,6 +48,46 @@ struct MiaoJiAccoutTests {
         ).contains("不能接收验证码"))
     }
 
+    // App Store review 1.0 (6) was rejected because a failed sign-in only said
+    // "云同步请求失败（HTTP 400）": GoTrue sends a numeric `code`, which made the
+    // whole error body fail to decode and hid the real reason.
+    @Test @MainActor func goTrueErrorBodyKeepsItsReasonDespiteNumericCode() throws {
+        let payload = Data(#"{"code":400,"error_code":"invalid_credentials","msg":"Invalid login credentials"}"#.utf8)
+
+        let decoded = try JSONDecoder().decode(SupabaseSyncService.ServerError.self, from: payload)
+
+        #expect(decoded.code == "400")
+        #expect(decoded.reasonCode == "invalid_credentials")
+        #expect(decoded.localizedText == "Invalid login credentials")
+        #expect(SupabaseSyncService.localizedServerMessage(
+            code: decoded.reasonCode,
+            fallback: decoded.localizedText,
+            statusCode: 400
+        ) == "邮箱或密码不正确，请检查后重试。")
+    }
+
+    @Test @MainActor func postgRESTErrorBodyKeepsItsStringCodeAndMessage() throws {
+        let payload = Data(#"{"code":"42501","details":null,"hint":null,"message":"permission denied for table privacy_consents"}"#.utf8)
+
+        let decoded = try JSONDecoder().decode(SupabaseSyncService.ServerError.self, from: payload)
+
+        #expect(decoded.reasonCode == "42501")
+        #expect(decoded.localizedText == "permission denied for table privacy_consents")
+    }
+
+    @Test @MainActor func unrecognizedServerErrorStillPrefersTheServerText() {
+        #expect(SupabaseSyncService.localizedServerMessage(
+            code: "some_future_code",
+            fallback: "Something specific went wrong",
+            statusCode: 400
+        ) == "Something specific went wrong")
+        #expect(SupabaseSyncService.localizedServerMessage(
+            code: nil,
+            fallback: nil,
+            statusCode: 400
+        ).contains("HTTP 400"))
+    }
+
     @Test @MainActor func localVoiceServerErrorExplainsLocalNetworkPermission() {
         let message = MiaoJiInputService.failureMessage(
             for: URLError(.notConnectedToInternet),
@@ -256,6 +296,61 @@ struct MiaoJiAccoutTests {
         #expect(syncService.didRecordPrivacyConsent)
     }
 
+    // A rejected credential must not leave the settings screen advertising
+    // "同步失败" for an account that was never signed in.
+    @Test @MainActor func rejectedCredentialsLeaveTheAppSignedOut() async throws {
+        let suiteName = "MiaoJiAccoutTests.\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let syncService = FakeSupabaseSyncService(snapshot: nil)
+        syncService.signInError = SupabaseSyncError.server("邮箱或密码不正确，请检查后重试。")
+        let store = AppStore(defaults: defaults, syncService: syncService)
+
+        await #expect(throws: SupabaseSyncError.self) {
+            try await store.signInToCloud(email: "review@example.com", password: "wrong-password")
+        }
+
+        #expect(store.cloudAccountEmail == nil)
+        #expect(store.cloudSyncState == .signedOut)
+        #expect(store.cloudSyncDescription == "登录后可跨设备查看账本")
+    }
+
+    @Test @MainActor func oneTransientConsentFailureDoesNotUndoTheLogin() async throws {
+        let suiteName = "MiaoJiAccoutTests.\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let syncService = FakeSupabaseSyncService(snapshot: nil)
+        syncService.consentFailuresRemaining = 1
+        let store = AppStore(defaults: defaults, syncService: syncService)
+
+        try await store.signInToCloud(email: "review@example.com", password: "correct-password")
+
+        #expect(store.cloudAccountEmail == "review@example.com")
+        #expect(syncService.consentAttempts == 2)
+        #expect(syncService.didRecordPrivacyConsent)
+        #expect(syncService.signOutCount == 0)
+    }
+
+    @Test @MainActor func persistentConsentFailureSignsOutAndExplainsWhy() async throws {
+        let suiteName = "MiaoJiAccoutTests.\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let syncService = FakeSupabaseSyncService(snapshot: nil)
+        syncService.consentFailuresRemaining = 5
+        let store = AppStore(defaults: defaults, syncService: syncService)
+
+        await #expect(throws: SupabaseSyncError.self) {
+            try await store.signInToCloud(email: "review@example.com", password: "correct-password")
+        }
+
+        #expect(store.cloudAccountEmail == nil)
+        #expect(store.cloudSyncState == .signedOut)
+        #expect(syncService.signOutCount == 1)
+    }
+
     @Test @MainActor func explicitLoginDoesNotUploadAnotherAccountsLocalLedger() async throws {
         let suiteName = "MiaoJiAccoutTests.\(UUID().uuidString)"
         let defaults = try #require(UserDefaults(suiteName: suiteName))
@@ -447,9 +542,13 @@ struct MiaoJiAccoutTests {
 private final class FakeSupabaseSyncService: SupabaseSyncServicing {
     var snapshot: StoredData?
     var restoredEmail: String?
+    var signInError: Error?
+    var consentFailuresRemaining = 0
     private(set) var uploadedSnapshots: [StoredData] = []
     private(set) var didDeleteAccount = false
     private(set) var didRecordPrivacyConsent = false
+    private(set) var consentAttempts = 0
+    private(set) var signOutCount = 0
 
     init(snapshot: StoredData?, restoredEmail: String? = nil) {
         self.snapshot = snapshot
@@ -458,9 +557,22 @@ private final class FakeSupabaseSyncService: SupabaseSyncServicing {
 
     func restoreSession() async throws -> String? { restoredEmail }
     func requestEmailOTP(email: String) async throws {}
-    func verifyEmailOTP(email: String, token: String) async throws -> String { email }
-    func signInWithPassword(email: String, password: String) async throws -> String { email }
-    func recordPrivacyConsent() async throws { didRecordPrivacyConsent = true }
+    func verifyEmailOTP(email: String, token: String) async throws -> String {
+        if let signInError { throw signInError }
+        return email
+    }
+    func signInWithPassword(email: String, password: String) async throws -> String {
+        if let signInError { throw signInError }
+        return email
+    }
+    func recordPrivacyConsent() async throws {
+        consentAttempts += 1
+        if consentFailuresRemaining > 0 {
+            consentFailuresRemaining -= 1
+            throw SupabaseSyncError.networkUnavailable
+        }
+        didRecordPrivacyConsent = true
+    }
     func fetchSnapshot() async throws -> StoredData? { snapshot }
     func uploadSnapshot(_ data: StoredData) async throws { uploadedSnapshots.append(data) }
     func accessToken() async throws -> String { "test-access-token" }
@@ -468,5 +580,5 @@ private final class FakeSupabaseSyncService: SupabaseSyncServicing {
         didDeleteAccount = true
         restoredEmail = nil
     }
-    func signOut() async {}
+    func signOut() async { signOutCount += 1 }
 }

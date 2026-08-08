@@ -1,6 +1,9 @@
-// Copy this file to MiaoJiConfig.xcconfig for local development. The copied
-// file is git-ignored. For real-device debugging, a Mac `.local` hostname is
-// more stable than a DHCP address. App Store archives must use public HTTPS.
+// Reference template. The real `MiaoJiConfig.xcconfig` is version-controlled
+// and holds the production values used by both local builds and Xcode Cloud;
+// it must keep pointing at public HTTPS so an archive can never reach a local
+// server. To debug against a Mac, override MIAOJI_API_BASE_URL in the Xcode
+// scheme's environment variables instead of editing the tracked file — a
+// `.local` hostname is more stable there than a DHCP address.
 MIAOJI_API_BASE_URL = https:/$()/api.example.com
 
 // Supabase publishable/anon keys are designed for clients. Never place a

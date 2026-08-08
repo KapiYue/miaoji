@@ -151,16 +151,45 @@ final class SupabaseSyncService: SupabaseSyncServicing {
         }
     }
 
-    private struct ServerError: Decodable {
+    // GoTrue and PostgREST disagree on the shape of an error body: GoTrue sends
+    // a numeric `code` with the machine-readable reason in `error_code`, while
+    // PostgREST sends a string `code` (the SQLSTATE). Decoding must tolerate
+    // both — a single mismatched field previously discarded the whole body and
+    // reduced every server error to "HTTP 400".
+    struct ServerError: Decodable {
         let code: String?
+        let errorCode: String?
         let message: String?
         let msg: String?
         let errorDescription: String?
         let error: String?
 
+        /// The machine-readable reason, preferring GoTrue's dedicated field.
+        var reasonCode: String? { errorCode ?? code }
+
+        /// The most descriptive human-readable text the server provided.
+        var localizedText: String? { message ?? msg ?? errorDescription ?? error }
+
         enum CodingKeys: String, CodingKey {
             case code, message, msg, error
+            case errorCode = "error_code"
             case errorDescription = "error_description"
+        }
+
+        init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            if let string = try? container.decodeIfPresent(String.self, forKey: .code) {
+                code = string
+            } else if let number = try? container.decodeIfPresent(Int.self, forKey: .code) {
+                code = String(number)
+            } else {
+                code = nil
+            }
+            errorCode = try? container.decodeIfPresent(String.self, forKey: .errorCode)
+            message = try? container.decodeIfPresent(String.self, forKey: .message)
+            msg = try? container.decodeIfPresent(String.self, forKey: .msg)
+            errorDescription = try? container.decodeIfPresent(String.self, forKey: .errorDescription)
+            error = try? container.decodeIfPresent(String.self, forKey: .error)
         }
     }
 
@@ -404,10 +433,9 @@ final class SupabaseSyncService: SupabaseSyncServicing {
         guard let http = response as? HTTPURLResponse else { throw SupabaseSyncError.invalidResponse }
         guard 200..<300 ~= http.statusCode else {
             let serverError = try? JSONDecoder().decode(ServerError.self, from: data)
-            let message = serverError?.message ?? serverError?.msg ?? serverError?.errorDescription ?? serverError?.error
             throw SupabaseSyncError.server(Self.localizedServerMessage(
-                code: serverError?.code,
-                fallback: message,
+                code: serverError?.reasonCode,
+                fallback: serverError?.localizedText,
                 statusCode: http.statusCode
             ))
         }
@@ -416,8 +444,16 @@ final class SupabaseSyncService: SupabaseSyncServicing {
 
     static func localizedServerMessage(code: String?, fallback: String?, statusCode: Int) -> String {
         switch code {
+        case "invalid_credentials", "invalid_grant":
+            return "邮箱或密码不正确，请检查后重试。"
+        case "email_not_confirmed":
+            return "该邮箱尚未完成验证，请先用邮箱验证码登录一次。"
+        case "user_banned":
+            return "该账号已被停用，请联系支持人员。"
+        case "weak_password":
+            return "密码强度不足，请改用至少 8 位且包含字母和数字的密码。"
         case "email_address_not_authorized":
-            return "当前邮箱暂不能接收验证码。请联系支持人员开通邮件服务，或改用审核测试账号登录。"
+            return "当前邮箱暂不能接收验证码。请联系支持人员开通邮件服务，或改用邮箱密码登录。"
         case "over_email_send_rate_limit", "over_request_rate_limit":
             return "验证码发送过于频繁，请稍后再试。"
         case "email_provider_disabled":

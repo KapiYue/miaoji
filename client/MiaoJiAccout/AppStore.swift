@@ -177,47 +177,62 @@ final class AppStore: ObservableObject {
 
     func verifyCloudLoginCode(email: String, code: String) async throws {
         guard let syncService else { throw SupabaseSyncError.notConfigured }
-        cloudSyncState = .syncing
-        do {
-            cloudAccountEmail = try await syncService.verifyEmailOTP(
+        try await completeCloudLogin {
+            try await syncService.verifyEmailOTP(
                 email: email.trimmingCharacters(in: .whitespacesAndNewlines),
                 token: code.trimmingCharacters(in: .whitespacesAndNewlines)
             )
-            do {
-                try await syncService.recordPrivacyConsent()
-            } catch {
-                await syncService.signOut()
-                cloudAccountEmail = nil
-                throw error
-            }
-            prepareLocalDataForExplicitLogin(email: cloudAccountEmail)
-            try await reconcileWithCloud(policy: .cloud)
-        } catch {
-            cloudSyncState = .failed(error.localizedDescription)
-            throw error
         }
     }
 
     func signInToCloud(email: String, password: String) async throws {
         guard let syncService else { throw SupabaseSyncError.notConfigured }
-        cloudSyncState = .syncing
-        do {
-            cloudAccountEmail = try await syncService.signInWithPassword(
+        try await completeCloudLogin {
+            try await syncService.signInWithPassword(
                 email: email.trimmingCharacters(in: .whitespacesAndNewlines),
                 password: password
             )
+        }
+    }
+
+    /// Runs an explicit login and the steps that must succeed with it. A failure
+    /// before the account is established leaves the app in its signed-out state
+    /// rather than showing a lingering "sync failed" banner for a session that
+    /// never existed.
+    private func completeCloudLogin(_ authenticate: () async throws -> String) async throws {
+        guard let syncService else { throw SupabaseSyncError.notConfigured }
+        cloudSyncState = .syncing
+        do {
+            cloudAccountEmail = try await authenticate()
             do {
-                try await syncService.recordPrivacyConsent()
+                try await recordPrivacyConsentAllowingOneRetry(using: syncService)
             } catch {
                 await syncService.signOut()
                 cloudAccountEmail = nil
-                throw error
+                throw SupabaseSyncError.server(
+                    "登录成功，但同意记录未能保存，已退出登录。请检查网络后重试。"
+                )
             }
             prepareLocalDataForExplicitLogin(email: cloudAccountEmail)
             try await reconcileWithCloud(policy: .cloud)
         } catch {
-            cloudSyncState = .failed(error.localizedDescription)
+            if cloudAccountEmail == nil {
+                cloudSyncState = .signedOut
+            } else {
+                cloudSyncState = .failed(error.localizedDescription)
+            }
             throw error
+        }
+    }
+
+    /// Consent must be recorded server-side before the ledger syncs, but a
+    /// single transient network failure should not undo a successful sign-in.
+    private func recordPrivacyConsentAllowingOneRetry(using syncService: SupabaseSyncServicing) async throws {
+        do {
+            try await syncService.recordPrivacyConsent()
+        } catch {
+            try await Task.sleep(for: .milliseconds(800))
+            try await syncService.recordPrivacyConsent()
         }
     }
 

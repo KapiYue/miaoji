@@ -6,7 +6,8 @@
 #      代码也不会被自动关掉。
 #
 # 前置条件：Supabase 里已创建 public.keepalive() 函数并 grant execute 给 anon，
-# 仓库变量 SUPABASE_URL / SUPABASE_PUBLISHABLE_KEY 已配置。详见 docs/keepalive.md。
+# SUPABASE_URL / SUPABASE_PUBLISHABLE_KEY 已配置（Variables 或 Secrets 均可）。
+# 详见 docs/keepalive.md。
 name: Supabase Keepalive
 
 on:
@@ -30,14 +31,15 @@ jobs:
       # 只用 curl，不需要 checkout 仓库代码，也不需要装 Node/Python。
       - name: Touch database
         env:
-          # 这两个值本来就公开在 client/MiaoJiConfig.xcconfig 里，用仓库变量
-          # 而不是 secret，方便日志排查；服务端密钥 sb_secret_ 绝不放进 CI。
-          SUPABASE_URL: ${{ vars.SUPABASE_URL }}
-          SUPABASE_PUBLISHABLE_KEY: ${{ vars.SUPABASE_PUBLISHABLE_KEY }}
+          # 这两个值本来就公开在 client/MiaoJiConfig.xcconfig 里，放 Variables 还是
+          # Secrets 都行，这里两边都读：vars 取不到时（未定义会得到空串）回退到 secrets。
+          # 服务端密钥 sb_secret_ 绝不放进 CI。
+          SUPABASE_URL: ${{ vars.SUPABASE_URL || secrets.SUPABASE_URL }}
+          SUPABASE_PUBLISHABLE_KEY: ${{ vars.SUPABASE_PUBLISHABLE_KEY || secrets.SUPABASE_PUBLISHABLE_KEY }}
         run: |
           set -euo pipefail
           if [ -z "${SUPABASE_URL:-}" ] || [ -z "${SUPABASE_PUBLISHABLE_KEY:-}" ]; then
-            echo "::error::仓库变量 SUPABASE_URL / SUPABASE_PUBLISHABLE_KEY 未配置"
+            echo "::error::SUPABASE_URL / SUPABASE_PUBLISHABLE_KEY 未配置（Variables 和 Secrets 里都没找到）"
             exit 1
           fi
           # RPC 执行 `select now()`：不读表、不写入，只让 Postgres 记录一次活动。

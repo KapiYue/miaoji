@@ -14,6 +14,7 @@ Icon
 # ==============================
 build/
 DerivedData/
+.derived-data/
 .derived-data-*/
 *.moved-aside
 *.pbxuser
@@ -141,15 +142,37 @@ venv/
 
 # ==============================
 # Maintainer-only docs (local ops, filing, release notes)
+# 默认忽略 docs/ 下的全部 Markdown，只放行策略站点与 README 需要的文档，
+# 新增的运维/发布/备案类文档无需再逐个添加规则。
 # ==============================
 HANDOFF.md
-docs/app-store-metadata-zh-CN.md
-docs/app-store-release-checklist.md
-docs/app-store-screenshot-guide.md
-docs/policy-site-deployment.md
-docs/tencent-cloud-ssl-deployment.md
-docs/public-security-app-filing.md
-docs/public-security-website-filing.md
+docs/*.md
+# 策略站点构建来源（client/scripts/build_policy_site.mjs）
+!docs/privacy-policy.md
+!docs/terms-of-service.md
+!docs/support.md
+# README / 开发流程引用
+!docs/qwen3.5-omni-migration-and-evaluation.md
+!docs/supabase-migration-guide.md
+!docs/xcode-cloud.md
+
+# ==============================
+# docs/assets 素材（结构对齐 cijing 项目）
+# 入库的只有 README 展示截图、Logo 和站点资源，其余素材目录一律本地保留。
+# ==============================
+
+# App Store Connect 上传用截图（约 49MB，由 scripts/capture-app-store-screenshots.sh 生成）
+/docs/assets/app-store-connect/
+# 备案素材：备案后台截图、结果截图、域名证书、提交的运行截图
+/docs/assets/icp-filing/
+/docs/assets/public-security-filing/
+
+# 证书与证件材料存放在仓库之外的 ../miaoji-data/；这条是误放进 docs/ 时的兜底。
+/docs/miaoji-data/
+*.cer
+*.mobileprovision
+*.p12
+*.mobileprovision.plist
 
 # Deployment configs (server-specific)
 deploy/nginx/

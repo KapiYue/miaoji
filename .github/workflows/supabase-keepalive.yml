@@ -1,0 +1,77 @@
+# 同时做两件保活：
+#   1. Supabase 免费项目连续 7 天没有数据库活动会被暂停，暂停后云同步和语音解析
+#      全部不可用。每次运行调一次 anon 可执行的 keepalive() RPC，产生真实数据库活动。
+#   2. GitHub 会在仓库连续 60 天没有活动后停用定时工作流。每次运行都往 keepalive
+#      孤儿分支强推一个 HEARTBEAT，用这次提交重置那个 60 天计时器，所以长期不写
+#      代码也不会被自动关掉。
+#
+# 前置条件：Supabase 里已创建 public.keepalive() 函数并 grant execute 给 anon，
+# 仓库变量 SUPABASE_URL / SUPABASE_PUBLISHABLE_KEY 已配置。详见 docs/keepalive.md。
+name: Supabase Keepalive
+
+on:
+  schedule:
+    # cron 五个字段：分 时 日 月 星期，时区固定 UTC（不是北京时间）。
+    #   */2 -> 奇数日（1、3、5…31 号），跨月时间隔会变一次
+    # GitHub 官方提醒整点排队的任务最多、可能延迟甚至被丢弃，两条都避开整点。
+    # 同一天两次互为备份：最长间隔约 33 小时，远小于 Supabase 的 7 天。
+    - cron: '17 1 */2 * *'  # UTC 01:17 = 北京时间 09:17
+    - cron: '43 14 */2 * *' # UTC 14:43 = 北京时间 22:43
+  workflow_dispatch:
+
+# 心跳步骤要往仓库推提交，默认的只读 token 不够。
+permissions:
+  contents: write
+
+jobs:
+  keepalive:
+    runs-on: ubuntu-latest
+    steps:
+      # 只用 curl，不需要 checkout 仓库代码，也不需要装 Node/Python。
+      - name: Touch database
+        env:
+          # 这两个值本来就公开在 client/MiaoJiConfig.xcconfig 里，用仓库变量
+          # 而不是 secret，方便日志排查；服务端密钥 sb_secret_ 绝不放进 CI。
+          SUPABASE_URL: ${{ vars.SUPABASE_URL }}
+          SUPABASE_PUBLISHABLE_KEY: ${{ vars.SUPABASE_PUBLISHABLE_KEY }}
+        run: |
+          set -euo pipefail
+          if [ -z "${SUPABASE_URL:-}" ] || [ -z "${SUPABASE_PUBLISHABLE_KEY:-}" ]; then
+            echo "::error::仓库变量 SUPABASE_URL / SUPABASE_PUBLISHABLE_KEY 未配置"
+            exit 1
+          fi
+          # RPC 执行 `select now()`：不读表、不写入，只让 Postgres 记录一次活动。
+          body="$(mktemp)"
+          code="$(curl -sS --max-time 30 -o "$body" -w '%{http_code}' \
+            -X POST "${SUPABASE_URL}/rest/v1/rpc/keepalive" \
+            -H "apikey: ${SUPABASE_PUBLISHABLE_KEY}" \
+            -H "Authorization: Bearer ${SUPABASE_PUBLISHABLE_KEY}" \
+            -H 'Content-Type: application/json' \
+            -d '{}')"
+          echo "HTTP ${code}: $(cat "$body")"
+          # 静默跳过正是让项目被暂停而没人发现的原因，非 200 一律标红。
+          [ "$code" = "200" ] || { echo "::error::Supabase keepalive 失败"; exit 1; }
+
+      # if: always() —— 上一步连不上数据库时这步也要跑，否则数据库一坏，
+      # 工作流 60 天后被停用，连自动恢复的机会都没有了。
+      # 每次在临时目录重建只含 HEARTBEAT 的孤儿提交并 --force 推上去，
+      # keepalive 分支永远只有一个提交，不会越堆越大，也不碰 main 的历史。
+      - name: Push heartbeat
+        if: always()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          timestamp="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+          workdir="$(mktemp -d)"
+          echo "$timestamp" > "$workdir/HEARTBEAT"
+          git -C "$workdir" init -q
+          git -C "$workdir" checkout -q -b keepalive
+          git -C "$workdir" config user.name 'github-actions[bot]'
+          git -C "$workdir" config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git -C "$workdir" add HEARTBEAT
+          git -C "$workdir" commit -q -m "chore(keepalive): heartbeat $timestamp"
+          git -C "$workdir" push -q --force \
+            "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" \
+            keepalive
+          echo "Heartbeat pushed to keepalive branch: $timestamp"

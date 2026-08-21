@@ -16,10 +16,10 @@ MiaoJi turns natural Mandarin speech into structured expense entries, keeps the 
 
 <table>
   <tr>
-    <td align="center"><img alt="妙记首页" src="docs/assets/app-store-screenshots/01-home-zh-CN.png" width="220"></td>
-    <td align="center"><img alt="妙记统计页" src="docs/assets/app-store-screenshots/02-statistics-zh-CN.png" width="220"></td>
-    <td align="center"><img alt="妙记历史页" src="docs/assets/app-store-screenshots/03-history-zh-CN.png" width="220"></td>
-    <td align="center"><img alt="妙记设置页" src="docs/assets/app-store-screenshots/04-settings-zh-CN.png" width="220"></td>
+    <td align="center"><img alt="妙记首页" src="docs/assets/screenshots/01-home-zh-CN.png" width="220"></td>
+    <td align="center"><img alt="妙记统计页" src="docs/assets/screenshots/02-statistics-zh-CN.png" width="220"></td>
+    <td align="center"><img alt="妙记历史页" src="docs/assets/screenshots/03-history-zh-CN.png" width="220"></td>
+    <td align="center"><img alt="妙记设置页" src="docs/assets/screenshots/04-settings-zh-CN.png" width="220"></td>
   </tr>
   <tr>
     <td align="center">Fast entry</td>

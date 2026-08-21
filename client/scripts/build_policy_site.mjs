@@ -197,7 +197,7 @@ function filingFooter() {
   return `<p class="filing-links">
       <a href="https://beian.miit.gov.cn/" target="_blank" rel="noreferrer">浙ICP备2026055717号-2</a>
       <span aria-hidden="true"> · </span>
-      <a class="police-filing-link" href="https://beian.mps.gov.cn/#/query/webSearch?code=33010502013311" target="_blank" rel="noreferrer"><img src="/assets/备案图标.png" alt="" width="20" height="20">浙公网安备33010502013311号</a>
+      <a class="police-filing-link" href="https://beian.mps.gov.cn/#/query/webSearch?code=33010502013311" target="_blank" rel="noreferrer"><img src="/assets/police-filing-icon.png" alt="" width="20" height="20">浙公网安备33010502013311号</a>
     </p>`;
 }
 
@@ -328,7 +328,7 @@ const portalHTML = `<!doctype html>
     </section>
     <section class="link-grid link-grid-2" aria-label="应用列表">
       <a class="link-card" href="https://miaoji.joy-coder.com"><span>01</span><h2>妙记 AI 账本</h2><p>本地优先的 AI 记账应用。查看隐私政策、用户协议与支持说明。</p><strong>进入站点 →</strong></a>
-      <a class="link-card" href="https://cijing.joy-coder.com"><span>02</span><h2>词鲸背单词</h2><p>背单词应用。查看隐私政策、使用条款与支持说明。</p><strong>进入站点 →</strong></a>
+      <a class="link-card" href="https://cijing.joy-coder.com"><span>02</span><h2>词鲸背单词</h2><p>背单词应用。查看隐私政策、支持说明与联系方式。</p><strong>进入站点 →</strong></a>
     </section>
   </main>
   <footer>
@@ -422,8 +422,8 @@ await rm(outputDirectory, { recursive: true, force: true });
 await mkdir(outputDirectory, { recursive: true });
 await mkdir(path.join(outputDirectory, "assets"), { recursive: true });
 await copyFile(
-  path.join(repositoryRoot, "docs/assets/备案图标.png"),
-  path.join(outputDirectory, "assets/备案图标.png"),
+  path.join(repositoryRoot, "docs/assets/website/police-filing-icon.png"),
+  path.join(outputDirectory, "assets/police-filing-icon.png"),
 );
 await writeFile(path.join(outputDirectory, "index.html"), indexHTML);
 await writeFile(path.join(outputDirectory, "styles.css"), styles);
@@ -461,8 +461,8 @@ const portalDirectory = path.join(repositoryRoot, "deploy/portal-site");
 await rm(portalDirectory, { recursive: true, force: true });
 await mkdir(path.join(portalDirectory, "assets"), { recursive: true });
 await copyFile(
-  path.join(repositoryRoot, "docs/assets/备案图标.png"),
-  path.join(portalDirectory, "assets/备案图标.png"),
+  path.join(repositoryRoot, "docs/assets/website/police-filing-icon.png"),
+  path.join(portalDirectory, "assets/police-filing-icon.png"),
 );
 await writeFile(path.join(portalDirectory, "index.html"), portalHTML);
 await writeFile(path.join(portalDirectory, "styles.css"), styles);
@@ -470,6 +470,8 @@ await writeFile(
   path.join(portalDirectory, "robots.txt"),
   "User-agent: *\nAllow: /\n",
 );
+
+// cijing.joy-coder.com 由词鲸项目自己维护和部署，本脚本不生成该站点。
 
 console.log(`Policy site generated at ${outputDirectory}`);
 console.log(`Portal site generated at ${portalDirectory}`);
